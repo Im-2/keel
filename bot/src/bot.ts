@@ -209,6 +209,19 @@ export function createBot(deps: Deps, bot = new Bot(deps.config.botToken)): Bot 
     await ctx.reply(helpText(), { parse_mode: "HTML" })
   })
 
+  bot.command("premium", handler(async (ctx, user) => {
+    const p = config.premium
+    if (!p) return void (await ctx.reply("Premium alerts aren't enabled on this network."))
+    const until = Number(store.getKv(`premium:${user.tg_id}`) ?? 0)
+    const active = until > Math.floor(Date.now() / 1000)
+    await ctx.reply(
+      `⭐ <b>Keel Premium</b> — pay-per-use in MUSD via x402, no subscription.
+${p.priceMusd} MUSD for ${p.days} days of near-real-time monitoring (free alerts are checked every few minutes).
+${active ? "Active until " + new Date(until * 1000).toISOString().slice(0, 10) : "Not active."}`,
+      { parse_mode: "HTML", reply_markup: isPrivate(ctx) ? signButton(active ? "Extend" : "Get Premium", "/premium") : new InlineKeyboard().url("Open Keel", dm()) },
+    )
+  }))
+
   // ------------------------------------------------------------------ payments
 
   bot.command("send", handler(async (ctx, user) => {

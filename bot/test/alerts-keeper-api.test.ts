@@ -188,3 +188,27 @@ describe("api", () => {
     expect((await app.request("/api/claim/relay", { method: "POST", body: "{}" })).status).toBe(400)
   })
 })
+
+describe("premium", () => {
+  it("grants and extends time, and premium users are polled on every tick", async () => {
+    const { store, chain, notifier } = setup()
+    const { Premium } = await import("../src/premium")
+    const prem = new Premium(store, () => 1_000)
+    expect(prem.isPremium(42)).toBe(false)
+    expect(prem.grant(42, 30)).toBe(1_000 + 30 * 86_400)
+    expect(prem.grant(42, 30)).toBe(1_000 + 60 * 86_400)
+    expect(prem.isPremium(42)).toBe(true)
+
+    store.upsertUser(43, "bob", "Bob")
+    store.setAddress(43, BOB)
+    const engine = new AlertEngine({ config, store, chain, notifier, isPremium: (id) => id === 42 }, 4)
+    chain.setView(ADA, { trove: trove(pct(120)), kind: "direct", guardianAddress: null })
+    chain.setView(BOB, { trove: trove(pct(120)), kind: "direct", guardianAddress: null })
+    await engine.tick() // tick 1: premium only
+    expect(notifier.sent.map((m) => m.to)).toEqual([42])
+    await engine.tick()
+    await engine.tick()
+    await engine.tick() // tick 4: everyone
+    expect(notifier.sent.map((m) => m.to).sort()).toEqual([42, 43])
+  })
+})

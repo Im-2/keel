@@ -11,6 +11,7 @@ import { AlertEngine } from "./alerts"
 import { Keeper, LiveKeeperBackend } from "./keeper"
 import { LiveClaimRelayer } from "./relayer"
 import { TelegramNotifier } from "./notify"
+import { Premium } from "./premium"
 
 const config = loadConfig()
 const store = new Store(config.dbPath)
@@ -21,8 +22,9 @@ const notifier = new TelegramNotifier(bot.api)
 const relayer = config.relayerKey ? new LiveClaimRelayer(chain, config) : undefined
 if (!relayer) console.warn("No RELAYER_PRIVATE_KEY / KEEPER_PRIVATE_KEY: claim links cannot be relayed.")
 
+const premium = new Premium(store)
 const app = createApi({
-  config, store, chain, notifier, relayer,
+  config, store, chain, notifier, relayer, premium,
   editMessage: (chatId, messageId, html, replyMarkup) =>
     bot.api.editMessageText(chatId, messageId, html, { parse_mode: "HTML", reply_markup: replyMarkup as never }),
 })
@@ -51,7 +53,8 @@ const loop = (name: string, ms: number, fn: () => Promise<unknown>) => {
   }, ms)
 }
 
-const alerts = new AlertEngine({ config, store, chain, notifier }, 1)
+// Premium users are checked every tick; everyone else every 4th tick.
+const alerts = new AlertEngine({ config, store, chain, notifier, isPremium: premium.isPremium }, config.premium ? 4 : 1)
 loop("alerts", config.pollMs, () => alerts.tick())
 
 if (config.keeperKey) {
@@ -68,6 +71,7 @@ await bot.api.setMyCommands([
   { command: "claimlink", description: "Send MUSD to someone without a wallet" },
   { command: "request", description: "Request a payment in a chat" },
   { command: "split", description: "Split a bill, e.g. /split 90 @a @b" },
+  { command: "premium", description: "Faster alerts, pay per use in MUSD" },
   { command: "alerts", description: "Liquidation & redemption alerts" },
   { command: "help", description: "All commands" },
 ]).catch((e) => console.warn("setMyCommands failed:", e.message))

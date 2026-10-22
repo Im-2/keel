@@ -11,6 +11,7 @@ export interface Config {
   dbPath: string
   keeperKey?: `0x${string}`
   relayerKey?: `0x${string}` // pays gas for claim-link relays (defaults to the keeper key)
+  premium?: { payTo: `0x${string}`; facilitatorUrl: string; priceMusd: string; days: number } // x402 pay-per-use alerts; off when unset
   adminIds: number[]
   pollMs: number
   deployment: Deployment
@@ -36,6 +37,10 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     dbPath: env.DB_PATH ?? ".keel-data/keel.sqlite",
     keeperKey: (env.KEEPER_PRIVATE_KEY as `0x${string}` | undefined) || undefined,
     relayerKey: ((env.RELAYER_PRIVATE_KEY as `0x${string}` | undefined) || (env.KEEPER_PRIVATE_KEY as `0x${string}` | undefined)) || undefined,
+    premium:
+      network !== "local" && env.PREMIUM_PAY_TO
+        ? { payTo: env.PREMIUM_PAY_TO as `0x${string}`, facilitatorUrl: env.X402_FACILITATOR_URL ?? "https://facilitator.vativ.io", priceMusd: env.PREMIUM_PRICE_MUSD ?? "1", days: Number(env.PREMIUM_DAYS ?? 30) }
+        : undefined,
     adminIds: (env.ADMIN_IDS ?? "").split(",").map((s) => Number(s.trim())).filter(Boolean),
     pollMs: Number(env.POLL_MS ?? 30_000),
     deployment,

@@ -7,6 +7,7 @@ import { Home } from "./screens/Home"
 import { Link } from "./screens/Link"
 import { Intent } from "./screens/Intent"
 import { Claim } from "./screens/Claim"
+import { Premium } from "./screens/Premium"
 
 export interface AppCtx {
   cfg: AppConfig
@@ -41,7 +42,7 @@ export function App({ cfg }: { cfg: AppConfig }) {
         <span className="logo">⚓</span> Keel
         <span className="net">{cfg.network === "mainnet" ? "Mezo" : `Mezo ${cfg.network}`}</span>
       </header>
-      {head === "link" ? <Link ctx={ctx} /> : head === "i" ? <Intent ctx={ctx} id={rest[0]} /> : head === "claim" ? <Claim ctx={ctx} keyHex={rest[0]} /> : <Home ctx={ctx} />}
+      {head === "link" ? <Link ctx={ctx} /> : head === "i" ? <Intent ctx={ctx} id={rest[0]} /> : head === "premium" ? <Premium ctx={ctx} /> : head === "claim" ? <Claim ctx={ctx} keyHex={rest[0]} /> : <Home ctx={ctx} />}
     </main>
   )
 }

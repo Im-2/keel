@@ -12,9 +12,17 @@
   "dependencies": {
     "@hono/node-server": "^1.13.0",
     "@keel/shared": "workspace:*",
+    "@x402/core": "^2.28.0",
+    "@x402/evm": "^2.28.0",
+    "@x402/hono": "^2.28.0",
     "grammy": "^1.30.0",
     "hono": "^4.6.0",
     "viem": "^2.21.0"
   },
-  "devDependencies": { "@types/node": "22", "tsx": "^4.19.0", "typescript": "5.6.3", "vitest": "^2.1.0" }
+  "devDependencies": {
+    "@types/node": "22",
+    "tsx": "^4.19.0",
+    "typescript": "5.6.3",
+    "vitest": "^2.1.0"
+  }
 }

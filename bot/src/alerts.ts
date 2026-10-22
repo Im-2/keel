@@ -30,7 +30,7 @@ export class AlertEngine {
     const full = this.ticks % this.freeEvery === 0
     if (!full) users = users.filter((u) => this.d.isPremium?.(u.tg_id))
 
-    await this.recoveryMode(users, sys.recoveryMode, sys.tcr)
+    if (full) await this.recoveryMode(users, sys.recoveryMode, sys.tcr) // global state: only on full ticks so free users are not skipped
 
     const views = new Map<number, UserView>()
     for (const u of users) {
