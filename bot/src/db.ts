@@ -33,6 +33,15 @@ export interface IntentRow {
   created_at: number
 }
 
+export interface Handoff {
+  token: string
+  tg_id: number
+  purpose: "link" | "intent"
+  intent_id: string | null
+  expires: number
+  used: number
+}
+
 export interface RequestRow {
   id: string
   chat_id: number
@@ -78,6 +87,7 @@ export class Store {
       );
       CREATE TABLE IF NOT EXISTS alert_state (tg_id INTEGER NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (tg_id, key));
       CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS handoffs (token TEXT PRIMARY KEY, tg_id INTEGER NOT NULL, purpose TEXT NOT NULL, intent_id TEXT, expires INTEGER NOT NULL, used INTEGER NOT NULL DEFAULT 0);
     `)
   }
 
@@ -184,6 +194,24 @@ export class Store {
     if (!r.paid.some((p) => p.tg_id === entry.tg_id)) r.paid.push(entry)
     this.db.prepare("UPDATE requests SET paid = ? WHERE id = ?").run(JSON.stringify(r.paid), id)
     return r
+  }
+
+  // ---- wallet-browser handoff: a one-time token standing in for Telegram initData outside Telegram
+  createHandoff(tgId: number, purpose: "link" | "intent", intentId: string | null, ttl = 600): { token: string; expires: number } {
+    const token = newId(24)
+    const expires = now() + ttl
+    this.db.prepare("DELETE FROM handoffs WHERE expires < ?").run(now())
+    this.db.prepare("INSERT INTO handoffs (token, tg_id, purpose, intent_id, expires) VALUES (?, ?, ?, ?, ?)").run(token, tgId, purpose, intentId, expires)
+    return { token, expires }
+  }
+  /** A live (unused, unexpired) handoff, or null. */
+  getHandoff(token: string): Handoff | null {
+    const r = this.db.prepare("SELECT * FROM handoffs WHERE token = ? AND used = 0 AND expires >= ?").get(token, now()) as Handoff | undefined
+    return r ?? null
+  }
+  /** Marks a handoff used; returns false if it was already used (single-use under concurrency). */
+  useHandoff(token: string): boolean {
+    return Number(this.db.prepare("UPDATE handoffs SET used = 1 WHERE token = ? AND used = 0").run(token).changes) === 1
   }
 
   // ---- alert dedup + kv

@@ -31,6 +31,16 @@ const intents: Record<string, unknown> = {
 }
 
 export function installMock() {
+  const q0 = new URLSearchParams(location.search)
+  if (q0.has("tg")) {
+    // pretend to be inside Telegram: non-empty initData, and record openLink calls instead of leaving the page
+    const w = window as unknown as { Telegram: { WebApp: Record<string, unknown> }; __opened: string[] }
+    w.__opened = []
+    const orig = w.Telegram.WebApp
+    w.Telegram.WebApp = new Proxy(orig, {
+      get: (t, k) => (k === "initData" ? "mock=1" : k === "openLink" ? (url: string) => void w.__opened.push(url) : Reflect.get(t, k)),
+    })
+  }
   const real = window.fetch.bind(window)
   window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input)
@@ -46,6 +56,7 @@ export function installMock() {
     if (path.startsWith("/api/intent/")) return json(intents[path.split("/")[3]] ?? { error: "not found" }, intents[path.split("/")[3]] ? 200 : 404)
     if (path === "/api/intent") return json({ error: "Preview mode: signing is disabled." }, 400)
     if (path.startsWith("/api/claim/")) return json({ sender: position.address, amount: (50n * E).toString(), expiry: now + 3600, settled: false })
+    if (path === "/api/handoff") return json({ token: "tok123", expires: now + 600, url: `${location.origin}/?w=tok123&r=link` })
     if (path === "/api/premium") return json({ active: false, until: 0, priceMusd: "1", days: 30 })
     return json({ error: "mock: no route" }, 404)
   }

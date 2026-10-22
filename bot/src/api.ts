@@ -3,7 +3,7 @@ import { cors } from "hono/cors"
 import { isAddress, verifyMessage, type Address, type Hex } from "viem"
 import { explorerTx, fmtMusd } from "@keel/shared"
 import type { Config } from "./config"
-import type { IntentRow, Store } from "./db"
+import type { Handoff, IntentRow, Store } from "./db"
 import type { ChainService } from "./chain"
 import type { Notifier } from "./notify"
 import type { ClaimRelayer } from "./relayer"
@@ -28,6 +28,7 @@ export interface ApiDeps {
 export const bindMessage = (tgId: number, nonce: string) => `Link this wallet to Keel (Telegram account ${tgId}).\nNonce: ${nonce}`
 
 const INIT_HEADER = "x-telegram-init-data"
+const HANDOFF_HEADER = "x-keel-handoff"
 
 export function createApi(d: ApiDeps) {
   const { config, store, chain, notifier } = d
@@ -100,17 +101,56 @@ export function createApi(d: ApiDeps) {
     }
     await next()
   }
+  /**
+   * Same as `auth`, but also accepts a one-time handoff token (for the wallet's own in-app browser, where there is
+   * no Telegram initData). The token only unlocks the routes for its purpose; see `handoffAllows`.
+   */
+  const authOrHandoff = async (c: Context, next: () => Promise<void>) => {
+    const token = c.req.header(HANDOFF_HEADER)
+    if (!token || c.req.header(INIT_HEADER)) return auth(c, next)
+    const h = store.getHandoff(token)
+    if (!h) return c.json({ error: "This link has expired or was already used. Start again from Telegram." }, 401)
+    if (!handoffAllows(h, c.req.method, c.req.path)) return c.json({ error: "not allowed" }, 403)
+    c.set("tg" as never, { user: { id: h.tg_id }, authDate: 0 } as never)
+    c.set("handoff" as never, h as never)
+    await next()
+  }
+  const handoffAllows = (h: Handoff, method: string, path: string) => {
+    if (path === "/api/me") return method === "GET"
+    if (h.purpose === "link") return path === "/api/nonce" || path === "/api/bind"
+    return !!h.intent_id && (path === `/api/intent/${h.intent_id}` || path === `/api/intent/${h.intent_id}/complete`)
+  }
+  const handoffOf = (c: Context) => (c.get("handoff" as never) as Handoff | undefined) ?? null
   const tgOf = (c: Context) => c.get("tg" as never) as InitData
   const userOf = (c: Context) => {
     const { user } = tgOf(c)
-    return store.upsertUser(user.id, user.username, user.first_name)
+    // a handoff carries only the Telegram id: never overwrite the stored name with blanks
+    return handoffOf(c) ? (store.getUser(user.id) ?? store.upsertUser(user.id)) : store.upsertUser(user.id, user.username, user.first_name)
   }
   if (d.premium) mountPremium(app, { config, premium: d.premium, auth: auth as never, tgIdOf: ((c: Context) => tgOf(c).user.id) as never, onGranted: (tgId, until) => notifier.send(tgId, `⭐ <b>Keel Premium is on</b> until ${new Date(until * 1000).toISOString().slice(0, 10)}: your loan is now checked every few seconds instead of minutes.`) })
   mountAppRoutes(app, { store, chain, auth: auth as never, userOf })
-  app.use("/api/me", auth)
-  app.use("/api/nonce", auth)
-  app.use("/api/bind", auth)
-  app.use("/api/intent/*", auth)
+  app.use("/api/handoff", auth)
+  app.use("/api/me", authOrHandoff)
+  app.use("/api/nonce", authOrHandoff)
+  app.use("/api/bind", authOrHandoff)
+  app.use("/api/intent/*", authOrHandoff)
+
+  // Create a one-time link that opens this action inside a wallet's own browser (10 minutes, single use).
+  app.post("/api/handoff", async (c) => {
+    const u = userOf(c)
+    const body = (await c.req.json().catch(() => ({}))) as { purpose?: string; intentId?: string }
+    if (body.purpose === "intent") {
+      const i = store.getIntent(String(body.intentId ?? ""))
+      if (!i || i.tg_id !== u.tg_id || i.status !== "pending") return c.json({ error: "not found" }, 404)
+      const h = store.createHandoff(u.tg_id, "intent", i.id)
+      return c.json({ ...h, url: `${config.miniappUrl}/?w=${h.token}&r=i/${i.id}` })
+    }
+    if (body.purpose === "link") {
+      const h = store.createHandoff(u.tg_id, "link", null)
+      return c.json({ ...h, url: `${config.miniappUrl}/?w=${h.token}&r=link` })
+    }
+    return c.json({ error: "bad request" }, 400)
+  })
 
   app.get("/api/me", (c) => {
     const u = userOf(c)
@@ -130,6 +170,8 @@ export function createApi(d: ApiDeps) {
     if (!store.consumeNonce(body.nonce, u.tg_id)) return c.json({ error: "nonce expired, please try again" }, 400)
     const ok = await verifyMessage({ address: body.address, message: bindMessage(u.tg_id, body.nonce), signature: body.signature as Hex }).catch(() => false)
     if (!ok) return c.json({ error: "signature does not match this wallet" }, 400)
+    const h = handoffOf(c)
+    if (h && !store.useHandoff(h.token)) return c.json({ error: "This link was already used." }, 401)
     store.setAddress(u.tg_id, body.address)
     await notifier.send(u.tg_id, `🔗 Wallet linked: <code>${body.address}</code>\nTry /position or /borrow 1800 160.`)
     return c.json({ address: body.address })
@@ -162,6 +204,8 @@ export function createApi(d: ApiDeps) {
       const u = store.getUser(intent.tg_id)
       if (!u?.address || rc.from.toLowerCase() !== u.address.toLowerCase()) return c.json({ error: "transaction was not sent by your linked wallet" }, 403)
     }
+    const h = handoffOf(c)
+    if (h && status === "done" && !store.useHandoff(h.token)) return c.json({ error: "This link was already used." }, 401)
     store.completeIntent(intent.id, status, txHash)
     if (status === "done") {
       await afterIntent(intent, txHash!)

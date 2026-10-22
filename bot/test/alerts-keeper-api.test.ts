@@ -252,3 +252,51 @@ describe("mini app routes", () => {
     expect((await req("POST", "/api/intent", { type: "repay", amount: "5" }, 99)).status).toBe(400) // unlinked user
   })
 })
+
+describe("wallet-browser handoff", () => {
+  const init3 = (id = 42) => signInitData({ auth_date: String(Math.floor(Date.now() / 1000)), user: JSON.stringify({ id, username: "ada", first_name: "Ada" }) }, TOKEN)
+  const mk3 = () => {
+    const s = setup()
+    const app = createApi({ config, store: s.store, chain: s.chain, notifier: s.notifier })
+    const tgReq = (method: string, path: string, body?: unknown, id = 42) => app.request(path, { method, headers: { "content-type": "application/json", "x-telegram-init-data": init3(id) }, body: body === undefined ? undefined : JSON.stringify(body) })
+    const hoReq = (token: string, method: string, path: string, body?: unknown) => app.request(path, { method, headers: { "content-type": "application/json", "x-keel-handoff": token }, body: body === undefined ? undefined : JSON.stringify(body) })
+    return { ...s, tgReq, hoReq }
+  }
+
+  it("links a wallet from outside Telegram with a single-use token, without touching other routes", async () => {
+    const { tgReq, hoReq, store } = mk3()
+    const h = (await (await tgReq("POST", "/api/handoff", { purpose: "link" })).json()) as { token: string; url: string }
+    expect(h.url).toMatch(/^https:\/\/app\.example\/\?w=[\w-]+&r=link$/)
+    expect((await hoReq(h.token, "GET", "/api/position")).status).toBe(401) // dashboard needs Telegram
+    expect((await hoReq(h.token, "POST", "/api/handoff", { purpose: "link" })).status).toBe(401)
+    expect((await hoReq(h.token, "GET", `/api/intent/whatever`)).status).toBe(403)
+    const acct = privateKeyToAccount(generatePrivateKey())
+    const { nonce, message } = (await (await hoReq(h.token, "POST", "/api/nonce", {})).json()) as { nonce: string; message: string }
+    expect(message).toContain("42")
+    const signature = await acct.signMessage({ message })
+    expect((await hoReq(h.token, "POST", "/api/bind", { nonce, address: acct.address, signature })).status).toBe(200)
+    expect(store.getUser(42)!.address).toBe(acct.address)
+    expect(store.getUser(42)!.username).toBe("ada") // a handoff never blanks the profile
+    expect((await hoReq(h.token, "POST", "/api/nonce", {})).status).toBe(401) // used up
+  })
+
+  it("is bound to one intent of its owner, single use, and expires", async () => {
+    const { tgReq, hoReq, store, chain } = mk3()
+    const mine = store.createIntent(42, "repay", { amount: "1" })
+    const other = store.createIntent(42, "repay", { amount: "2" })
+    const theirs = store.createIntent(99, "repay", { amount: "3" })
+    expect((await tgReq("POST", "/api/handoff", { purpose: "intent", intentId: theirs.id })).status).toBe(404)
+    const h = (await (await tgReq("POST", "/api/handoff", { purpose: "intent", intentId: mine.id })).json()) as { token: string }
+    expect((await hoReq(h.token, "GET", `/api/intent/${mine.id}`)).status).toBe(200)
+    expect((await hoReq(h.token, "GET", `/api/intent/${other.id}`)).status).toBe(403)
+    expect((await hoReq(h.token, "POST", "/api/nonce", {})).status).toBe(403)
+    const tx = "0x" + "33".repeat(32)
+    chain.receipts.set(tx, { ok: true, from: ADA })
+    expect((await hoReq(h.token, "POST", `/api/intent/${mine.id}/complete`, { txHash: tx })).status).toBe(200)
+    expect(store.getIntent(mine.id)!.status).toBe("done")
+    expect((await hoReq(h.token, "GET", `/api/intent/${mine.id}`)).status).toBe(401)
+    const old = store.createHandoff(42, "intent", other.id, -1)
+    expect((await hoReq(old.token, "GET", `/api/intent/${other.id}`)).status).toBe(401)
+    expect((await hoReq("forged", "GET", `/api/intent/${other.id}`)).status).toBe(401)
+  })
+})

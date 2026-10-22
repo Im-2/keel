@@ -4,6 +4,7 @@ import type { Hex, WalletClient } from "viem"
 import { api, tg, type IntentDto } from "../lib/api"
 import { buildPlan, type Plan } from "../lib/plan"
 import { go, useRefreshAll } from "../lib/data"
+import { handoffToken, inTelegram } from "../lib/telegram"
 import { big, fmtMusd } from "../lib/units"
 import { AmountInput, Button, Glass, KeelMark, MezoBadge, Notice, Rows, Skeleton, StateView } from "../ui/kit"
 import { Header } from "../ui/shell"
@@ -26,7 +27,7 @@ export function Intent({ ctx, id }: { ctx: AppCtx; id?: string }) {
   return (
     <>
       <Header title="Review & sign" greeting="Confirm" back />
-      <WalletGate ctx={ctx} title="Connect to sign">{({ account, wallet }) => <Review ctx={ctx} intent={intent} account={account} wallet={wallet} />}</WalletGate>
+      <WalletGate ctx={ctx} title="Connect to sign" handoff={{ purpose: "intent", intentId: intent.id }}>{({ account, wallet }) => <Review ctx={ctx} intent={intent} account={account} wallet={wallet} />}</WalletGate>
     </>
   )
 }
@@ -167,7 +168,7 @@ function Done({ ctx, intent, done }: { ctx: AppCtx; intent: IntentDto; done: { t
       body={intent.type === "borrow" ? "Your loan is open and the MUSD is in your wallet." : intent.type === "protect_config" ? "Protection settings saved." : "Transaction confirmed on Mezo."}
       action={
         <div className="stack">
-          <Button onClick={() => go("/")}>Back to dashboard</Button>
+          {handoffToken() && !inTelegram() ? <a className="btn btn-primary" href={`https://t.me/${ctx.cfg.botUsername}`}>Return to Telegram</a> : <Button onClick={() => go("/")}>Back to dashboard</Button>}
           {tg && <Button variant="quiet" onClick={closeApp}>Back to chat</Button>}
           {txLink}
         </div>

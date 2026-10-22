@@ -1,12 +1,14 @@
 import React from "react"
 import { createRoot } from "react-dom/client"
-import { WagmiProvider, http } from "wagmi"
+import { WagmiProvider, createConfig, http } from "wagmi"
+import { injected, walletConnect } from "wagmi/connectors"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { RainbowKitProvider, getDefaultConfig, darkTheme } from "@rainbow-me/rainbowkit"
 import "@rainbow-me/rainbowkit/styles.css"
 import { chainFor } from "@keel/shared"
 import { api, tg, type AppConfig } from "./lib/api"
 import { App } from "./App"
+import { inTelegram, readHandoffFromUrl } from "./lib/telegram"
 import "./styles.css"
 
 tg?.ready()
@@ -19,6 +21,8 @@ try {
 } catch {
   /* older Telegram clients */
 }
+
+readHandoffFromUrl()
 
 const root = createRoot(document.getElementById("root")!)
 
@@ -36,13 +40,19 @@ async function boot() {
   }
   const chain = chainFor(cfg.network)
   const projectId = import.meta.env.VITE_WC_PROJECT_ID || "keel-no-walletconnect"
-  const wagmi = getDefaultConfig({
-    appName: "Keel",
-    projectId,
-    chains: [chain],
-    transports: { [chain.id]: http(cfg.rpcUrl ?? chain.rpcUrls.default.http[0]) } as never,
-    ssr: false,
-  })
+  const transports = { [chain.id]: http(cfg.rpcUrl ?? chain.rpcUrls.default.http[0]) } as never
+  // Inside Telegram we drive WalletConnect ourselves (see TelegramConnect): no modal, deep links via tg.openLink.
+  // Elsewhere (desktop, or a wallet's own browser) RainbowKit's picker and injected wallets work as usual.
+  const wagmi = inTelegram()
+    ? createConfig({
+        chains: [chain],
+        transports,
+        connectors: [
+          walletConnect({ projectId, showQrModal: false, metadata: { name: "Keel", description: "BTC-backed dollars in Telegram", url: location.origin, icons: [`${location.origin}/keel-icon-512.png`] } }),
+          injected(),
+        ],
+      })
+    : getDefaultConfig({ appName: "Keel", projectId, chains: [chain], transports, ssr: false })
   const qc = new QueryClient({ defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } } })
   root.render(
     <React.StrictMode>

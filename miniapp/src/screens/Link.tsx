@@ -2,6 +2,7 @@ import { useState } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { api } from "../lib/api"
 import { go } from "../lib/data"
+import { handoffToken, inTelegram } from "../lib/telegram"
 import { short } from "../lib/units"
 import { Button, Glass, KeelMark, MezoBadge, Notice, StateView } from "../ui/kit"
 import { WalletGate, haptic, shortError } from "../components"
@@ -17,7 +18,7 @@ export function Link({ ctx }: { ctx: AppCtx }) {
         kind="success"
         title="Wallet linked"
         body="You're set. Borrow against your BTC, turn on protection, or pay a friend."
-        action={<Button onClick={() => go("/")}>Open dashboard</Button>}
+        action={handoffToken() && !inTelegram() ? <a className="btn btn-primary" href={`https://t.me/${ctx.cfg.botUsername}`}>Return to Telegram</a> : <Button onClick={() => go("/")}>Open dashboard</Button>}
       />
     )
   }
@@ -28,7 +29,7 @@ export function Link({ ctx }: { ctx: AppCtx }) {
         <h1>Keel</h1>
         <p className="muted">Dollars against your Bitcoin, inside Telegram.<br />Non-custodial, protected by a guardian.</p>
       </div>
-      <WalletGate ctx={ctx} showMark={false}>
+      <WalletGate ctx={ctx} showMark={false} handoff={{ purpose: "link" }}>
         {({ account, wallet }) => (
           <Glass orb="gold" className="connect">
             <h2>One signature to link</h2>

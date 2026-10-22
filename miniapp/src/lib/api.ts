@@ -1,4 +1,5 @@
 import type { Address } from "viem"
+import { handoffToken } from "./telegram"
 
 export interface TgWebApp {
   initData: string
@@ -15,12 +16,22 @@ export interface TgWebApp {
   colorScheme?: "light" | "dark"
   themeParams?: Record<string, string>
   openTelegramLink?(url: string): void
-  openLink?(url: string): void
+  openLink?(url: string, opts?: { try_instant_view?: boolean }): void
   HapticFeedback?: { notificationOccurred(t: "success" | "error" | "warning"): void }
   MainButton?: unknown
 }
 
-export const tg = (window as unknown as { Telegram?: { WebApp?: TgWebApp } }).Telegram?.WebApp
+const liveTg = () => (window as unknown as { Telegram?: { WebApp?: TgWebApp } }).Telegram?.WebApp
+/** Telegram.WebApp, read live on every access (so a dev preview can stand in for a real Telegram client). */
+export const tg: TgWebApp | undefined = liveTg()
+  ? (new Proxy({}, {
+      get: (_, k) => {
+        const w = liveTg() as unknown as Record<PropertyKey, unknown> | undefined
+        const v = w?.[k]
+        return typeof v === "function" ? (v as (...a: unknown[]) => unknown).bind(w) : v
+      },
+    }) as TgWebApp)
+  : undefined
 
 export interface AppConfig {
   network: "testnet" | "mainnet" | "local"
@@ -42,6 +53,17 @@ export interface IntentDto {
   status: "pending" | "done" | "failed"
 }
 
+/** Telegram initData inside Telegram; a one-time handoff token inside a wallet's own browser. */
+export function authHeaders(): Record<string, string> {
+  const h: Record<string, string> = { "content-type": "application/json" }
+  if (tg?.initData) h["x-telegram-init-data"] = tg.initData
+  else {
+    const t = handoffToken()
+    if (t) h["x-keel-handoff"] = t
+  }
+  return h
+}
+
 /** Backend origin when the Mini App is hosted separately from the bot server (set at build time). */
 export const apiUrl = (path: string) => `${(import.meta.env.VITE_API_BASE as string | undefined)?.replace(/\/$/, "") ?? ""}${path}`
 
@@ -54,7 +76,7 @@ export class ApiError extends Error {
 async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(apiUrl(path), {
     method,
-    headers: { "content-type": "application/json", "x-telegram-init-data": tg?.initData ?? "" },
+    headers: authHeaders(),
     body: body === undefined ? undefined : JSON.stringify(body),
     // never leave a screen on a spinner forever if the backend is unreachable
     signal: AbortSignal.timeout(method === "GET" ? 20_000 : 60_000),
@@ -77,6 +99,7 @@ export const api = {
   position: () => call<PositionDto>("GET", "/api/position"),
   market: () => call<{ source: string; prices: Array<[number, number]>; oracle: number }>("GET", "/api/market"),
   activity: () => call<{ items: ActivityItem[] }>("GET", "/api/activity"),
+  handoff: (b: { purpose: "link" } | { purpose: "intent"; intentId: string }) => call<{ token: string; expires: number; url: string }>("POST", "/api/handoff", b),
   createIntent: (b: Record<string, unknown>) => call<IntentDto>("POST", "/api/intent", b),
   claimRelay: (b: { link: Address; to: Address; signature: string }) => call<{ txHash: string }>("POST", "/api/claim/relay", b),
 }

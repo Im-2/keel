@@ -76,5 +76,8 @@ await bot.api.setMyCommands([
   { command: "help", description: "All commands" },
 ]).catch((e) => console.warn("setMyCommands failed:", e.message))
 
+// The chat menu button opens the Mini App at the stable production URL (MINIAPP_URL), never a per-deploy URL.
+await bot.api.setChatMenuButton({ menu_button: { type: "web_app", text: "Open Keel", web_app: { url: config.miniappUrl } } }).catch((e) => console.warn("setChatMenuButton failed:", e.message))
+
 bot.catch((e) => console.error("bot error", e.error))
 bot.start({ onStart: (me) => console.log(`bot @${me.username} running on ${config.network}`) })

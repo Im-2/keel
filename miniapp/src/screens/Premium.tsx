@@ -4,7 +4,7 @@ import { x402Client } from "@x402/core/client"
 import { wrapFetchWithPayment } from "@x402/fetch"
 import { ExactEvmScheme, toClientEvmSigner } from "@x402/evm"
 import type { PublicClient, WalletClient } from "viem"
-import { apiUrl, tg } from "../lib/api"
+import { apiUrl, authHeaders } from "../lib/api"
 import { WalletGate, closeApp, haptic, shortError } from "../components"
 import { Button, Glass, Notice, Skeleton, StateView } from "../ui/kit"
 import { Header } from "../ui/shell"
@@ -19,7 +19,7 @@ interface Status {
 }
 
 const authed = (path: string, init: RequestInit = {}) =>
-  fetch(apiUrl(path), { ...init, headers: { ...(init.headers ?? {}), "content-type": "application/json", "x-telegram-init-data": tg?.initData ?? "" } })
+  fetch(apiUrl(path), { ...init, headers: { ...(init.headers ?? {}), ...authHeaders() } })
 
 /** x402: the server answers 402 with MUSD payment requirements, the wallet signs a gasless Permit2 payment, the facilitator settles. */
 export function Premium({ ctx }: { ctx: AppCtx }) {

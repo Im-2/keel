@@ -1,0 +1,12 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "installCommand": "pnpm install --frozen-lockfile --filter @keel/miniapp...",
+  "buildCommand": "pnpm --filter @keel/miniapp build",
+  "outputDirectory": "miniapp/dist",
+  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }],
+  "headers": [
+    { "source": "/index.html", "headers": [{ "key": "Cache-Control", "value": "no-cache" }] },
+    { "source": "/", "headers": [{ "key": "Cache-Control", "value": "no-cache" }] }
+  ]
+}
