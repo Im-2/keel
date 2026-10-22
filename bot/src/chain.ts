@@ -23,6 +23,7 @@ export interface ChainService {
   troves(): Promise<TroveSnapshot[]>
   guardianCount(): Promise<number>
   blockNumber(): Promise<bigint>
+  balance(address: Address): Promise<bigint>
   /** Receipt summary for completion checks; null if not mined yet. */
   receipt(hash: string): Promise<{ ok: boolean; from: Address } | null>
   /** Keeper `Protected` events emitted by the given guardians in [from, to]. */
@@ -102,6 +103,10 @@ export class LiveChain implements ChainService {
 
   blockNumber(): Promise<bigint> {
     return this.client.getBlockNumber()
+  }
+
+  balance(address: Address): Promise<bigint> {
+    return this.client.getBalance({ address })
   }
 
   async protectedEvents(guardians: Address[], from: bigint, to: bigint): Promise<ProtectedEvent[]> {

@@ -5,6 +5,12 @@ export const MCR = 11n * 10n ** 17n // 110%
 export const CCR = 15n * 10n ** 17n // 150%
 export const GAS_COMP = 200n * E18 // MUSD_GAS_COMPENSATION
 export const BPS = 10_000n
+/** Small-wallet budget (testnet faucet gives ~0.05 BTC): keep this much BTC for fees on top of collateral. */
+export const GAS_BUFFER = 2n * 10n ** 15n // 0.002 BTC
+/** Suggested guardian reserve for a minimum loan. */
+export const SUGGESTED_RESERVE = 5n * 10n ** 15n // 0.005 BTC
+export const DEFAULT_BORROW = 1800
+export const DEFAULT_BORROW_ICR = 160
 
 export type RiskLevel = "safe" | "watch" | "danger" | "critical" | "liquidatable"
 

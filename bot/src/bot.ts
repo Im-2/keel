@@ -1,6 +1,6 @@
 import { Bot, InlineKeyboard, type Context } from "grammy"
 import {
-  E18, explorerTx, fmtBtc, fmtIcr, fmtMusd, pct, quoteBorrow, riskLevel, RISK_EMOJI, parseUnits18,
+  E18, DEFAULT_BORROW, DEFAULT_BORROW_ICR, GAS_BUFFER, SUGGESTED_RESERVE, explorerTx, fmtBtc, fmtIcr, fmtMusd, pct, quoteBorrow, riskLevel, RISK_EMOJI, parseUnits18,
 } from "@keel/shared"
 import type { Config } from "./config"
 import type { Store, UserRow, IntentRow, IntentType } from "./db"
@@ -111,15 +111,21 @@ export function createBot(deps: Deps, bot = new Bot(deps.config.botToken)): Bot 
     const address = await needWallet(ctx, user)
     if (!address) return
     const [amountRaw, icrRaw] = splitArgs(args(ctx))
-    const amount = parseAmount(amountRaw, "borrow amount (in MUSD)")
-    const targetIcr = parsePercent(icrRaw, 200)
+    const amount = amountRaw ? parseAmount(amountRaw, "borrow amount (in MUSD)") : BigInt(DEFAULT_BORROW) * E18
+    const targetIcr = parsePercent(icrRaw, DEFAULT_BORROW_ICR)
     const sys = await chain.system()
     const q = quoteBorrow({
       borrowAmount: amount, price: sys.price, borrowingRate: sys.borrowingRate, interestRateBps: sys.interestRateBps,
       minNetDebt: sys.minNetDebt, targetIcr, recoveryMode: sys.recoveryMode,
     })
-    const blocked = q.warnings.some((w) => /Minimum|below the 110/.test(w))
-    const text = borrowCard(q, sys, amount) + (icrRaw ? "" : "\n\n<i>Tip: add a ratio, e.g. <code>/borrow 5000 250</code> for more safety.</i>")
+    const balance = await chain.balance(address)
+    const need = q.collateral + GAS_BUFFER
+    const short = balance < need
+    const blocked = short || q.warnings.some((w) => /Minimum|below the 110/.test(w))
+    let text = borrowCard(q, sys, amount) + (icrRaw ? "" : "\n\n<i>Tip: a higher ratio is safer, e.g. <code>/borrow 1800 200</code> (needs more BTC).</i>")
+    text += short
+      ? `\n\n🪙 <b>Not enough BTC in your wallet.</b> You need about <b>${fmtBtc(need, 4)}</b> (${fmtBtc(q.collateral, 4)} collateral + ${fmtBtc(GAS_BUFFER, 3)} for fees); your wallet has ${fmtBtc(balance, 4)}. Get testnet BTC from the Mezo faucet, or try a lower amount or ratio.`
+      : `\n\n🪙 Wallet: ${fmtBtc(balance, 4)}. After borrowing you'll have about ${fmtBtc(balance - q.collateral, 4)} left: keep ~${fmtBtc(SUGGESTED_RESERVE, 3)} for your guardian reserve (<code>/fund ${fmtBtc(SUGGESTED_RESERVE, 3).replace(" BTC", "")}</code>).`
     if (blocked) return void (await ctx.reply(text, { parse_mode: "HTML" }))
     const i = intent(ctx, "borrow", { amount: amount.toString(), targetIcr: targetIcr.toString() })
     await ctx.reply(text, { parse_mode: "HTML", reply_markup: signButton("✍️ Review & sign", `/i/${i.id}`) })
@@ -159,13 +165,18 @@ export function createBot(deps: Deps, bot = new Bot(deps.config.botToken)): Bot 
   bot.command("protect", handler(async (ctx, user) => {
     const [a, b] = splitArgs(args(ctx))
     if (!a) return sendProtect(ctx, user)
-    if (!(await needWallet(ctx, user))) return
+    const address = await needWallet(ctx, user)
+    if (!address) return
     const minIcr = parsePercent(a, 130)
     const targetIcr = parsePercent(b, 150)
     if (minIcr <= pct(110)) throw new UserError("The trigger must be above 110% (the liquidation line).")
     if (targetIcr <= minIcr) throw new UserError("The target must be higher than the trigger, e.g. /protect 130 150.")
     const i = intent(ctx, "protect_config", { enabled: true, minIcr: minIcr.toString(), targetIcr: targetIcr.toString(), tipBps: 20, cooldown: 300 })
-    await ctx.reply(`Guardian will act below <b>${fmtIcr(minIcr)}</b> and restore you to <b>${fmtIcr(targetIcr)}</b>.`, { parse_mode: "HTML", reply_markup: signButton("✍️ Review & sign", `/i/${i.id}`) })
+    const view = await chain.view(address)
+    const notes: string[] = []
+    if (view.trove && view.trove.icr < minIcr) notes.push(`Your ratio is <b>${fmtIcr(view.trove.icr)}</b>, already under the trigger, so the keeper will top you up within about a minute of signing (if the reserve has BTC).`)
+    if (!view.guardian || (view.guardian.reserveBTC === 0n && view.guardian.reserveMUSD === 0n)) notes.push(`The reserve is empty. Add BTC with <code>/fund ${fmtBtc(SUGGESTED_RESERVE, 3).replace(" BTC", "")}</code> so there is something to top up with.`)
+    await ctx.reply(`Guardian will act below <b>${fmtIcr(minIcr)}</b> and restore you to <b>${fmtIcr(targetIcr)}</b>.${notes.length ? "\n\n" + notes.join("\n") : ""}`, { parse_mode: "HTML", reply_markup: signButton("✍️ Review & sign", `/i/${i.id}`) })
   }))
   bot.callbackQuery("cb:protect", async (ctx) => {
     await ctx.answerCallbackQuery()

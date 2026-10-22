@@ -59,7 +59,13 @@ export class Keeper {
     for (const g of await this.backend.guardians()) {
       try {
         if (!(await this.backend.canProtect(g))) continue
-        const tx = await this.backend.protect(g)
+        // public RPC nodes can lag or flake right after a state change: re-check once before giving up
+        const tx = await this.backend.protect(g).catch(async (e) => {
+          if (!(await this.backend.canProtect(g))) return null
+          this.log(`keeper: ${g} retrying after: ${(e as Error).message.split("\n")[0]}`)
+          return this.backend.protect(g)
+        })
+        if (!tx) continue
         this.log(`keeper: protected ${g} in ${tx}`)
         this.store.setKv("stat:keeper_protections", String(Number(this.store.getKv("stat:keeper_protections") ?? "0") + 1))
         done.push(g)

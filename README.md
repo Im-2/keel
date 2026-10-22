@@ -78,6 +78,10 @@ pnpm --filter @keel/bot test && pnpm --filter @keel/bot typecheck
 cd contracts && pnpm test:keel
 ```
 
+### Demo on one faucet request (about 0.05 BTC)
+
+`/borrow` defaults to the minimum loan (1,800 MUSD) at 160% (about 0.04 BTC collateral), leaving roughly 0.005 BTC for the guardian reserve and 0.005 for fees. Then `/fund 0.005` and `/protect 170 180`: the ratio is already under 170%, so the keeper tops it up from the reserve to about 180% within a minute. Verified on Mezo testnet (159.9% to 179.9%).
+
 ### Deploy to Mezo testnet
 
 ```bash

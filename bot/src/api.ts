@@ -129,7 +129,7 @@ export function createApi(d: ApiDeps) {
     const ok = await verifyMessage({ address: body.address, message: bindMessage(u.tg_id, body.nonce), signature: body.signature as Hex }).catch(() => false)
     if (!ok) return c.json({ error: "signature does not match this wallet" }, 400)
     store.setAddress(u.tg_id, body.address)
-    await notifier.send(u.tg_id, `🔗 Wallet linked: <code>${body.address}</code>\nTry /position or /borrow 5000.`)
+    await notifier.send(u.tg_id, `🔗 Wallet linked: <code>${body.address}</code>\nTry /position or /borrow 1800 160.`)
     return c.json({ address: body.address })
   })
 

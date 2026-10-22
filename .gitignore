@@ -31,3 +31,5 @@ dist/
 .scratch/
 .tunnel.log
 .vercel
+.bot.log
+.deploy/

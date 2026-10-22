@@ -1,6 +1,6 @@
 import { type Address, type Hex, type PublicClient, type WalletClient } from "viem"
 import {
-  E18, computeIcr, fmtBtc, fmtIcr, fmtMusd, fmtUsd, hintHelpersAbi, keelGuardianAbi, keelGuardianFactoryAbi, keelPayAbi,
+  E18, GAS_BUFFER, collateralToTarget, computeIcr, fmtBtc, fmtIcr, fmtMusd, fmtUsd, hintHelpersAbi, keelGuardianAbi, keelGuardianFactoryAbi, keelPayAbi,
   liquidationPrice, musdAbi, parseUnits18, quoteBorrow, readGuardian, readSystem, readTrove, sortedTrovesAbi, findGuardian,
   type Deployment,
 } from "@keel/shared"
@@ -103,8 +103,9 @@ export async function buildPlan(intent: IntentDto, ctx: Ctx, input: { amount?: s
         ["Liquidation price", `${fmtUsd(q.liqPrice, 0)} (BTC now ${fmtUsd(sys.price, 0)})`],
       ]
       plan.warnings = [...q.warnings]
-      if (balance < q.collateral) plan.warnings.push(`Your wallet has ${fmtBtc(balance, 5)}, less than the ${fmtBtc(q.collateral, 5)} needed.`)
-      plan.blocked = q.warnings.some((w) => /Minimum|below the 110/.test(w)) || balance < q.collateral
+      const needBtc = q.collateral + GAS_BUFFER
+      if (balance < needBtc) plan.warnings.push(`Not enough BTC: you need about ${fmtBtc(needBtc, 4)} (${fmtBtc(q.collateral, 4)} collateral + ${fmtBtc(GAS_BUFFER, 3)} for fees) but your wallet has ${fmtBtc(balance, 4)}. Get testnet BTC from the Mezo faucet or borrow less.`)
+      plan.blocked = q.warnings.some((w) => /Minimum|below the 110/.test(w)) || balance < needBtc
       if (needGuardian) plan.steps.push(createGuardian)
       plan.steps.push({
         label: "Open loan",
@@ -127,8 +128,8 @@ export async function buildPlan(intent: IntentDto, ctx: Ctx, input: { amount?: s
         ["Liquidation price", `${fmtUsd(trove.liqPrice, 0)} → ${fmtUsd(liquidationPrice(coll, trove.debt), 0)}`],
         ["Interest", `unchanged (${(trove.interestRateBps / 100).toFixed(2)}% APR)`],
       ]
-      if (balance < amount) plan.warnings.push("Not enough BTC in your wallet.")
-      plan.blocked = balance < amount
+      if (balance < amount + GAS_BUFFER) plan.warnings.push(`Not enough BTC: you need about ${fmtBtc(amount + GAS_BUFFER, 4)} (including ~${fmtBtc(GAS_BUFFER, 3)} for fees) but your wallet has ${fmtBtc(balance, 4)}.`)
+      plan.blocked = balance < amount + GAS_BUFFER
       plan.steps.push({
         label: "Add collateral",
         run: async (w, c) => {
@@ -174,8 +175,8 @@ export async function buildPlan(intent: IntentDto, ctx: Ctx, input: { amount?: s
         ["Who can spend it", "Only your guardian, only to protect your loan"],
         ["Withdraw", "You can take it back any time"],
       ]
-      if (balance < amount) plan.warnings.push("Not enough BTC in your wallet.")
-      plan.blocked = balance < amount
+      if (balance < amount + GAS_BUFFER) plan.warnings.push(`Not enough BTC: you need about ${fmtBtc(amount + GAS_BUFFER, 4)} (including ~${fmtBtc(GAS_BUFFER, 3)} for fees) but your wallet has ${fmtBtc(balance, 4)}.`)
+      plan.blocked = balance < amount + GAS_BUFFER
       if (needGuardian) plan.steps.push(createGuardian)
       plan.steps.push({ label: "Fund reserve", run: (w, c) => write(w, c, { address: guardianTarget, abi: keelGuardianAbi, functionName: "fundReserve", value: amount }) })
       return plan
@@ -196,7 +197,11 @@ export async function buildPlan(intent: IntentDto, ctx: Ctx, input: { amount?: s
         ["Fee", "none"],
       ]
       if (trove?.active) plan.rows.push(["Your ratio now", pctText(trove.icr)])
-      if (enabled && (!g || (g.reserveBTC === 0n && g.reserveMUSD === 0n))) plan.warnings.push("Reserve is empty: protection needs BTC in the reserve to act. Fund it next.")
+      if (enabled && (!g || (g.reserveBTC === 0n && g.reserveMUSD === 0n))) plan.warnings.push("Reserve is empty: protection needs BTC in the reserve to act. Fund it next (about 0.005 BTC).")
+      if (enabled && trove?.active) {
+        const topUp = collateralToTarget(trove.coll, trove.debt, sys.price, targetIcr)
+        if (trove.icr < minIcr) plan.warnings.push(`Your ratio (${pctText(trove.icr)}) is already below ${pctText(minIcr)}: the keeper will act right after you sign, using about ${fmtBtc(topUp, 4)} from the reserve${g && g.reserveBTC < topUp ? ` (the reserve has only ${fmtBtc(g.reserveBTC, 4)}, so it will restore you only partway; fund more)` : ""}.`)
+      }
       if (needGuardian) plan.steps.push(createGuardian)
       plan.steps.push({
         label: "Save protection settings",

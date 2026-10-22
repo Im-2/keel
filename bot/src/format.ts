@@ -19,7 +19,7 @@ export function icrGauge(icr: bigint): string {
 export function positionCard(v: UserView, sys: SystemState): string {
   if (!v.trove) {
     const g = v.guardian ? `\n🛡 Guardian account ready · reserve ${fmtBtc(v.guardian.reserveBTC, 4)}` : ""
-    return `<b>No open position yet.</b>\nBTC is <b>${fmtUsd(sys.price, 0)}</b> right now.${g}\n\nTry <code>/borrow 5000</code> to borrow MUSD against your BTC.`
+    return `<b>No open position yet.</b>\nBTC is <b>${fmtUsd(sys.price, 0)}</b> right now.${g}\n\nTry <code>/borrow 1800 160</code> to borrow MUSD against your BTC.`
   }
   const t = v.trove
   const lines: string[] = []
@@ -68,11 +68,11 @@ export function helpText(): string {
     "",
     "<b>Your position</b>",
     "/position — ratio, liquidation price, redemption queue",
-    "/borrow <code>5000</code> [ratio%] — quote &amp; open a loan",
+    "/borrow <code>1800 160</code> — quote &amp; open a loan (amount, ratio%)",
     "/repay <code>1000</code> · /addcollateral <code>0.05</code>",
     "",
     "<b>Protection</b>",
-    "/protect [trigger% target%] — auto-restore your ratio",
+    "/protect <code>170 180</code> — act below 170%, restore to 180%",
     "/fund <code>0.02</code> — top up the BTC reserve",
     "/alerts — liquidation &amp; redemption alerts",
     "",

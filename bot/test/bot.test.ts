@@ -114,3 +114,33 @@ describe("bot commands", () => {
     void GUARDIAN
   })
 })
+
+describe("small wallets (0.05 BTC faucet)", () => {
+  it("defaults /borrow to 1,800 MUSD at 160% and warns with the exact BTC needed", async () => {
+    const h = harness()
+    h.store.upsertUser(42, "ada", "Ada")
+    h.store.setAddress(42, ADA)
+    h.chain.btc = E18 / 100n // 0.01 BTC
+    await h.say("/borrow")
+    const text = String(h.last()!.payload.text)
+    expect(text).toContain("Borrow 1,800")
+    expect(text).toContain("160%")
+    expect(text).toContain("Not enough BTC")
+    expect(text).toMatch(/about <b>0\.0\d+ BTC<\/b>/)
+    expect(buttonUrls(h.last()!.payload)).toHaveLength(0) // no sign button when the wallet is short
+
+    h.chain.btc = E18 / 20n // 0.05 BTC
+    await h.say("/borrow")
+    expect(buttonUrls(h.last()!.payload)[0]).toContain("/#/i/")
+    expect(String(h.last()!.payload.text)).toContain("/fund 0.005")
+  })
+
+  it("tells the user the keeper acts right away when /protect trigger is above the current ratio", async () => {
+    const h = harness()
+    h.store.upsertUser(42, "ada", "Ada")
+    h.store.setAddress(42, ADA)
+    h.chain.setView(ADA, { trove: trove(pct(160)), guardian: guardian({ reserveBTC: E18 / 200n }) })
+    await h.say("/protect 170 180")
+    expect(String(h.last()!.payload.text)).toContain("keeper will top you up")
+  })
+})

@@ -65,7 +65,7 @@ if (config.keeperKey) {
 
 await bot.api.setMyCommands([
   { command: "position", description: "Your loan, ratio and liquidation price" },
-  { command: "borrow", description: "Borrow MUSD against BTC, e.g. /borrow 5000" },
+  { command: "borrow", description: "Borrow MUSD against BTC, e.g. /borrow 1800 160" },
   { command: "protect", description: "Auto-protect your loan" },
   { command: "send", description: "Send MUSD, e.g. /send @friend 25" },
   { command: "claimlink", description: "Send MUSD to someone without a wallet" },
