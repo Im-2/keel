@@ -1,0 +1,19 @@
+{
+  "chainId": 31612,
+  "musd": {
+    "musd": "0x318e6b0D4E8112aF08e9BfbECfb14e152fE7855d",
+    "borrowerOperations": "0x971Ff2D85DA8FE1e1533204cE2F3EA36F7d27c66",
+    "borrowerOperationsSignatures": "0x61A4Ecb233477d93C45C54f83948B1FF89182B65",
+    "troveManager": "0xc581768f944F60c8D711a086Fb45339703090cb3",
+    "sortedTroves": "0x1D19b8b8b492bA72eA1Ff340D88FeF341C785A00",
+    "hintHelpers": "0xC01B2841FAA908D2793676e71a6Bbb7D2838aeDa",
+    "priceFeed": "0x8826968921217d6813Bbd82EfCE983c99aF70BFF",
+    "interestRateManager": "0xFC623e91a3A638718cDA6dCC108BD60a9F8109E1",
+    "stabilityPool": "0x1cd89D59208f8E16344eD2D4D98A99e1f208fbec"
+  },
+  "keel": {
+    "guardianFactory": "0xC38C20690a3D04a097524Ad99790b2383472ac81",
+    "pay": "0x5ba0F4093789F775B770fd03BD149b008443767A"
+  },
+  "mockAggregator": "0xC4407fbaA0FF4fF5ed89A91860FB9e9d33ea56CC"
+}

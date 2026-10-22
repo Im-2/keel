@@ -1,0 +1,10 @@
+node_modules
+dist
+.env
+*.log
+artifacts
+cache
+typechain-types
+.keel-data
+build
+.keel-local-keys.json

@@ -1,0 +1,36 @@
+{
+  "root": true,
+  "extends": ["@thesis-co"],
+  "rules": {
+    "no-plusplus": "off",
+    "no-await-in-loop": "off",
+    "import/no-extraneous-dependencies": [
+      "error",
+      {
+        "devDependencies": [
+          "hardhat.config.ts",
+          "deploy/**",
+          "scripts/**",
+          "helpers/**",
+          "test/**"
+        ]
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": ["test/helpers/debugging.ts"], // Specify the path to the file
+      "rules": {
+        "no-console": "off" // Disable the no-console rule for this file
+      }
+    },
+    {
+      "files": ["scripts/**/*.ts"],
+      "rules": {
+        "no-console": "off",
+        "no-continue": "off", // Lots of loops for scale testing make this useful for readability
+        "no-restricted-syntax": "off" // for loops make scale testing scripts easier to read
+      }
+    }
+  ]
+}

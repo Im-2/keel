@@ -1,0 +1,12 @@
+{
+  "name": "keel",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Keel - a BTC-backed dollar account inside Telegram, built on Mezo MUSD",
+  "packageManager": "pnpm@10.28.0",
+  "pnpm": {
+    "overrides": {
+      "@openzeppelin/upgrades-core": "1.37.1"
+    }
+  }
+}
