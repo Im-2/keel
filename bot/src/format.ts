@@ -1,8 +1,9 @@
 import {
-  CCR, E18, MCR, RISK_EMOJI, fmtBtc, fmtIcr, fmtMusd, fmtUsd, riskLevel,
+  CCR, E18, MCR, RISK_EMOJI, fmtBtc, fmtIcr, fmtMusd, fmtUsd, parseUnits18, riskLevel,
   type BorrowQuote, type SystemState,
 } from "@keel/shared"
 import type { UserView } from "./chain"
+import type { RequestRow } from "./db"
 
 export const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
 
@@ -82,4 +83,18 @@ export function helpText(): string {
     "",
     "/link — connect your wallet · /stats — keeper network",
   ].join("\n")
+}
+
+export function renderRequest(r: RequestRow, requesterName: string): string {
+  const lines = [`💸 <b>${esc(requesterName)}</b> requests <b>${fmtMusd(parseUnits18(r.amount), 2)}</b>${r.memo ? ` — ${esc(r.memo)}` : ""}`]
+  if (r.participants?.length) {
+    lines.push("")
+    for (const p of r.participants) {
+      const paid = r.paid.find((x) => (p.tg_id && x.tg_id === p.tg_id) || (p.username && x.username?.toLowerCase() === p.username.toLowerCase()))
+      lines.push(`${paid ? "✅" : "⏳"} ${p.username ? "@" + esc(p.username) : "member"}`)
+    }
+  } else if (r.paid.length) {
+    lines.push("", ...r.paid.map((p) => `✅ ${p.username ? "@" + esc(p.username) : "paid"}`))
+  }
+  return lines.join("\n")
 }

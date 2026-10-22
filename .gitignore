@@ -8,3 +8,22 @@ typechain-types
 .keel-data
 build
 .keel-local-keys.json
+
+# secrets & local state (never commit)
+.env
+.env.*
+!.env.example
+!.env.ci.example
+*.pem
+*.key
+*.keystore
+*private-key*
+.keel-local-keys.json
+.keel-data/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.db
+dist/
+*.tar.gz
+.DS_Store

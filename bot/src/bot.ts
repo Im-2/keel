@@ -5,7 +5,7 @@ import {
 import type { Config } from "./config"
 import type { Store, UserRow, IntentRow, IntentType } from "./db"
 import type { ChainService } from "./chain"
-import { borrowCard, esc, helpText, positionCard } from "./format"
+import { borrowCard, esc, helpText, positionCard, renderRequest } from "./format"
 import { UserError, args, parseAmount, parsePercent, parseRecipient, splitArgs } from "./parse"
 
 export interface Deps {
@@ -239,25 +239,12 @@ export function createBot(deps: Deps, bot = new Bot(deps.config.botToken)): Bot 
     await ctx.reply(`Create a claim link worth <b>${fmtMusd(amount)}</b>. Share it with anyone — they don't need a wallet yet. Unclaimed funds refund to you after 72h.`, { parse_mode: "HTML", reply_markup: signButton("🎁 Create claim link", `/i/${i.id}`) })
   }))
 
-  function requestText(r: NonNullable<ReturnType<Store["getRequest"]>>, requesterName: string) {
-    const lines = [`💸 <b>${esc(requesterName)}</b> requests <b>${fmtMusd(parseUnits18(r.amount), 2)}</b>${r.memo ? ` — ${esc(r.memo)}` : ""}`]
-    if (r.participants?.length) {
-      lines.push("")
-      for (const p of r.participants) {
-        const paid = r.paid.find((x) => (p.tg_id && x.tg_id === p.tg_id) || (p.username && x.username?.toLowerCase() === p.username.toLowerCase()))
-        lines.push(`${paid ? "✅" : "⏳"} ${p.username ? "@" + esc(p.username) : "member"}`)
-      }
-    } else if (r.paid.length) {
-      lines.push("", ...r.paid.map((p) => `✅ ${p.username ? "@" + esc(p.username) : "paid"}`))
-    }
-    return lines.join("\n")
-  }
-  const payKb = (id: string) => new InlineKeyboard().url("Pay with Keel", dm(`?start=pay_${id}`))
+  const payKb = (id: string) => payKeyboard(config.botUsername, id)
 
   async function postRequest(ctx: Context, user: UserRow, amount: bigint, memo: string | null, participants: Array<{ username: string }> | null) {
     if (!user.address) return void (await ctx.reply("Link your wallet first so people know where to pay 👉", { reply_markup: new InlineKeyboard().url("Open Keel", dm()) }))
     const r = store.createRequest({ chat_id: ctx.chat!.id, requester_tg: user.tg_id, requester_address: user.address, amount: fmtAmountPlain(amount), memo, participants })
-    const msg = await ctx.reply(requestText(r, user.username ? "@" + user.username : user.first_name ?? "Someone"), { parse_mode: "HTML", reply_markup: payKb(r.id) })
+    const msg = await ctx.reply(renderRequest(r, user.username ? "@" + user.username : user.first_name ?? "Someone"), { parse_mode: "HTML", reply_markup: payKb(r.id) })
     store.setRequestMessage(r.id, msg.message_id)
   }
 
@@ -305,6 +292,8 @@ export function createBot(deps: Deps, bot = new Bot(deps.config.botToken)): Bot 
 
   return bot
 }
+
+export const payKeyboard = (botUsername: string, id: string) => new InlineKeyboard().url("Pay with Keel", `https://t.me/${botUsername}?start=pay_${id}`)
 
 /** MUSD bigint -> plain decimal string (for storage in requests). */
 export function fmtAmountPlain(v: bigint): string {

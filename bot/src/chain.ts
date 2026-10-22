@@ -1,4 +1,4 @@
-import type { Address } from "viem"
+import { parseAbiItem, type Address } from "viem"
 import {
   findGuardian, makeClient, readGuardian, readSystem, readTrove, redemptionAhead, scanTroves,
   keelGuardianFactoryAbi,
@@ -22,7 +22,20 @@ export interface ChainService {
   view(address: Address): Promise<UserView>
   troves(): Promise<TroveSnapshot[]>
   guardianCount(): Promise<number>
+  blockNumber(): Promise<bigint>
+  /** Receipt summary for completion checks; null if not mined yet. */
+  receipt(hash: string): Promise<{ ok: boolean; from: Address } | null>
+  /** Keeper `Protected` events emitted by the given guardians in [from, to]. */
+  protectedEvents(guardians: Address[], from: bigint, to: bigint): Promise<ProtectedEvent[]>
+  /** MUSD transfers received by the given addresses in [from, to]. */
+  incomingTransfers(addresses: Address[], from: bigint, to: bigint): Promise<TransferEvent[]>
 }
+
+export interface ProtectedEvent { guardian: Address; btcAdded: bigint; musdRepaid: bigint; icrBefore: bigint; icrAfter: bigint; tx: string }
+export interface TransferEvent { from: Address; to: Address; value: bigint; tx: string }
+
+const protectedEvent = parseAbiItem("event Protected(address indexed keeper, uint8 action, uint256 btcAdded, uint256 musdRepaid, uint256 icrBefore, uint256 icrAfter, uint256 tipBTC, uint256 tipMUSD)")
+const transferEvent = parseAbiItem("event Transfer(address indexed from, address indexed to, uint256 value)")
 
 export class LiveChain implements ChainService {
   client: Client
@@ -85,5 +98,29 @@ export class LiveChain implements ChainService {
   async guardianCount(): Promise<number> {
     const n = await this.client.readContract({ address: this.deployment.keel!.guardianFactory, abi: keelGuardianFactoryAbi, functionName: "totalGuardians" })
     return Number(n)
+  }
+
+  blockNumber(): Promise<bigint> {
+    return this.client.getBlockNumber()
+  }
+
+  async protectedEvents(guardians: Address[], from: bigint, to: bigint): Promise<ProtectedEvent[]> {
+    if (guardians.length === 0 || from > to) return []
+    const logs = await this.client.getLogs({ address: guardians, event: protectedEvent, fromBlock: from, toBlock: to })
+    return logs.map((l) => ({
+      guardian: l.address, btcAdded: l.args.btcAdded!, musdRepaid: l.args.musdRepaid!,
+      icrBefore: l.args.icrBefore!, icrAfter: l.args.icrAfter!, tx: l.transactionHash,
+    }))
+  }
+
+  async incomingTransfers(addresses: Address[], from: bigint, to: bigint): Promise<TransferEvent[]> {
+    if (addresses.length === 0 || from > to) return []
+    const logs = await this.client.getLogs({ address: this.deployment.musd.musd, event: transferEvent, args: { to: addresses }, fromBlock: from, toBlock: to })
+    return logs.map((l) => ({ from: l.args.from!, to: l.args.to!, value: l.args.value!, tx: l.transactionHash }))
+  }
+
+  async receipt(hash: string): Promise<{ ok: boolean; from: Address } | null> {
+    const rc = await this.client.getTransactionReceipt({ hash: hash as `0x${string}` }).catch(() => null)
+    return rc ? { ok: rc.status === "success", from: rc.from } : null
   }
 }

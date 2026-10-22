@@ -10,6 +10,7 @@ export interface Config {
   apiPort: number
   dbPath: string
   keeperKey?: `0x${string}`
+  relayerKey?: `0x${string}` // pays gas for claim-link relays (defaults to the keeper key)
   adminIds: number[]
   pollMs: number
   deployment: Deployment
@@ -34,6 +35,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     apiPort: Number(env.PORT ?? 8787),
     dbPath: env.DB_PATH ?? ".keel-data/keel.sqlite",
     keeperKey: (env.KEEPER_PRIVATE_KEY as `0x${string}` | undefined) || undefined,
+    relayerKey: ((env.RELAYER_PRIVATE_KEY as `0x${string}` | undefined) || (env.KEEPER_PRIVATE_KEY as `0x${string}` | undefined)) || undefined,
     adminIds: (env.ADMIN_IDS ?? "").split(",").map((s) => Number(s.trim())).filter(Boolean),
     pollMs: Number(env.POLL_MS ?? 30_000),
     deployment,
