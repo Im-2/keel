@@ -5,7 +5,7 @@ import { big, compact, fmtBtc, fmtIcr, fmtMusd, fmtUsd, icrPct, num, toneOf, E18
 import { Header } from "../ui/shell"
 import { Button, Gauge, Glass, MezoBadge, Skeleton, Sparkline, StateView } from "../ui/kit"
 import { ActivityRow, explorerFor } from "../ui/activity"
-import { IconQueue, IconShield, IconDrop } from "../ui/icons"
+import { IconAlert, IconCheck, IconQueue, IconShield, IconDrop } from "../ui/icons"
 import { shortError } from "../components"
 import type { AppCtx } from "../App"
 
@@ -48,7 +48,7 @@ export function Home({ ctx }: { ctx: AppCtx }) {
             <Glass className="hero flip-face" orb="gold">
               <div className="hero-head">
                 <h2>Your Bitcoin is working</h2>
-                <span className={`pill pill-${tone}`}>{tone === "safe" ? "Safe" : tone === "warn" ? "Watch" : "At risk"}</span>
+                <span className={`pill pill-${tone}`}>{tone === "safe" ? <IconCheck size={12} /> : <IconAlert size={12} />}{tone === "safe" ? "Safe" : tone === "warn" ? "Watch" : "At risk"}</span>
               </div>
               <div className="hero-grid">
                 <div>
@@ -102,7 +102,7 @@ export function Home({ ctx }: { ctx: AppCtx }) {
           <span className="tile-icon"><IconDrop size={18} /></span>
           <span className="label">Liquidation</span>
           {p ? <strong>{t ? fmtUsd(big(t.liqPrice), 0) : "—"}</strong> : <Skeleton h={20} w={70} />}
-          <Sparkline values={icrSeries} tone={tone === "safe" ? "green" : tone === "warn" ? "gold" : "red"} width={86} height={26} />
+          <Sparkline values={icrSeries} tone={tone === "safe" ? "green" : "red"} width={86} height={26} />
           <small className="muted">{t ? `ratio ${fmtIcr(big(t.icr))}` : "no loan"}</small>
         </Glass>
         <Glass className="tile" onClick={() => go("/protect")}>

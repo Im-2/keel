@@ -123,7 +123,7 @@ export function TelegramConnect({ title, handoff, showMark = true }: { title: st
       <div className="wallets">
         {WALLETS.map((w) => (
           <button key={w.id} className="wallet-btn" disabled={!uri} onClick={() => openWallet(w)}>
-            <span className="wallet-dot" style={{ background: w.color }}>{w.name[0]}</span>
+            <span className="wallet-dot">{w.name[0]}</span>
             <span>{w.name}</span>
             {!uri ? <span className="spinner small-spin" aria-hidden /> : <IconExternal size={16} />}
           </button>

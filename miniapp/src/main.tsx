@@ -14,9 +14,9 @@ import "./styles.css"
 tg?.ready()
 tg?.expand()
 try {
-  tg?.setHeaderColor?.("#0e0f13")
-  tg?.setBackgroundColor?.("#0e0f13")
-  tg?.setBottomBarColor?.("#0e0f13")
+  tg?.setHeaderColor?.("#000000")
+  tg?.setBackgroundColor?.("#000000")
+  tg?.setBottomBarColor?.("#000000")
   tg?.disableVerticalSwipes?.()
 } catch {
   /* older Telegram clients */
@@ -28,13 +28,13 @@ const root = createRoot(document.getElementById("root")!)
 
 async function boot() {
   if (import.meta.env.DEV && new URLSearchParams(location.search).has("mock")) (await import("./dev/mock")).installMock()
-  root.render(<div className="app"><div className="splash"><div className="splash-mark"><span className="splash-glow" /><img src="/keel-mark.svg" width={72} height={72} alt="Keel" /></div></div></div>)
+  root.render(<div className="app"><div className="splash"><div className="splash-mark"><span className="splash-glow" /><img src="/keel-mark-red.svg" width={72} height={72} alt="Keel" /></div></div></div>)
   let cfg: AppConfig
   try {
     cfg = await api.config()
   } catch {
     root.render(
-      <div className="app"><div className="state state-error"><img src="/keel-mark.svg" width={56} height={56} alt="Keel" /><h2>Can't reach Keel</h2><p className="muted">The server is not responding. Please try again in a moment.</p></div></div>,
+      <div className="app"><div className="state state-error"><img src="/keel-mark-red.svg" width={56} height={56} alt="Keel" /><h2>Can't reach Keel</h2><p className="muted">The server is not responding. Please try again in a moment.</p></div></div>,
     )
     return
   }
@@ -58,7 +58,7 @@ async function boot() {
     <React.StrictMode>
       <WagmiProvider config={wagmi}>
         <QueryClientProvider client={qc}>
-          <RainbowKitProvider theme={darkTheme({ accentColor: "#f7931a", accentColorForeground: "#1b1204", borderRadius: "large", overlayBlur: "small" })} modalSize="compact">
+          <RainbowKitProvider theme={darkTheme({ accentColor: "#E10600", accentColorForeground: "#FFFFFF", borderRadius: "large", overlayBlur: "small" })} modalSize="compact">
             <App cfg={cfg} />
           </RainbowKitProvider>
         </QueryClientProvider>

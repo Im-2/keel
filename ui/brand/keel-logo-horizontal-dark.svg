@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 340" width="1100" height="340"><rect width="1100" height="340" fill="#000000"/>
+<g transform="translate(-23 -16) scale(.72)"><path d="M256 56 C320 56 380 70 424 92 L424 270 C424 350 350 420 256 462 C162 420 88 350 88 270 L88 92 C132 70 192 56 256 56 Z" fill="#E10600"/>
+<path d="M256 104 C306 104 350 114 384 130 L384 266 C384 322 330 372 256 408 C182 372 128 322 128 266 L128 130 C162 114 206 104 256 104 Z" fill="#000000"/>
+<path d="M244 150 H268 V318 L256 352 L244 318 Z" fill="#FFFFFF"/>
+<path d="M244 280 L176 312 L244 306 Z" fill="#E10600" opacity="0.85"/>
+<path d="M268 280 L336 312 L268 306 Z" fill="#E10600" opacity="0.85"/></g>
+<text x="380" y="225" font-family="Helvetica, Arial, sans-serif" font-weight="800" font-size="190" fill="#FFFFFF" letter-spacing="-4">Keel</text></svg>

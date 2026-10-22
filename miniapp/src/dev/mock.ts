@@ -50,7 +50,7 @@ export function installMock() {
     await new Promise((r) => setTimeout(r, 350))
     if (path === "/api/config") return real(input, init) // real chain config from the running bot
     const q = new URLSearchParams(location.search)
-    if (path === "/api/position") return json(q.has("unlinked") ? { linked: false, user: { firstName: "Ada", username: "ada" } } : q.has("noloan") ? { ...position, wallet: { btc: s(0.05) }, trove: null, redemption: null, guardian: null } : position)
+    if (path === "/api/position") return json(q.has("unlinked") ? { linked: false, user: { firstName: "Ada", username: "ada" } } : q.has("noloan") ? { ...position, wallet: { btc: s(0.05) }, trove: null, redemption: null, guardian: null } : q.has("risk") ? { ...position, trove: { ...position.trove, icr: s(1.18), liqPrice: s(75600), bufferBps: 690, risk: "danger" } } : q.has("watch") ? { ...position, trove: { ...position.trove, icr: s(1.39) } } : position)
     if (path === "/api/market") return json({ source: "mock", prices, oracle: 81168 })
     if (path === "/api/activity") return json(activity)
     if (path.startsWith("/api/intent/")) return json(intents[path.split("/")[3]] ?? { error: "not found" }, intents[path.split("/")[3]] ? 200 : 404)

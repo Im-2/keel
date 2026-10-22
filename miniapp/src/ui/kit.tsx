@@ -2,7 +2,7 @@ import { useEffect, useId, useState, type ReactNode, type CSSProperties } from "
 import { IconAlert, IconCheck } from "./icons"
 import type { Tone } from "../lib/units"
 
-export const KeelMark = ({ size = 28 }: { size?: number }) => <img src="/keel-mark.svg" width={size} height={size} alt="Keel" className="mark" />
+export const KeelMark = ({ size = 28 }: { size?: number }) => <img src="/keel-mark-red.svg" width={size} height={size} alt="Keel" className="mark" />
 
 /** Mezo's logo is a solid square, so it sits on a matching rounded badge, unaltered. */
 export const MezoBadge = ({ label = "Built on Mezo" }: { label?: string }) => (
@@ -33,7 +33,8 @@ export function Sparkline({ values, tone = "gold", height = 34, width = 96 }: { 
   const span = max - min || 1
   const pts = values.map((v, i) => [(i / (values.length - 1)) * width, height - 3 - ((v - min) / span) * (height - 6)] as const)
   const d = pts.map(([x, y], i) => `${i ? "L" : "M"}${x.toFixed(1)} ${y.toFixed(1)}`).join(" ")
-  const color = tone === "green" ? "var(--safe)" : tone === "red" ? "var(--danger)" : "var(--gold)"
+  // black/red/white palette: neutral trends in white, adverse ones in red
+  const color = tone === "red" ? "var(--red-bright)" : "#ffffff"
   return (
     <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="spark" aria-hidden>
       <defs>
@@ -61,7 +62,7 @@ export function Gauge({ icr, size = 210, label = "Safety ratio" }: { icr: number
   const r = size / 2 - 14
   const len = Math.PI * r
   const tone: Tone = icr >= 150 ? "safe" : icr >= 125 ? "warn" : "danger"
-  const color = tone === "safe" ? "var(--safe)" : tone === "warn" ? "var(--warn)" : "var(--danger)"
+  const color = tone === "safe" ? "#ffffff" : tone === "warn" ? "var(--red-bright)" : "var(--red)"
   const cx = size / 2
   const cy = size / 2
   const angle = Math.PI * (1 - frac)
@@ -83,11 +84,12 @@ export function Gauge({ icr, size = 210, label = "Safety ratio" }: { icr: number
           className="gauge-arc"
         />
         <line x1={cx + (r - 10) * Math.cos(ccr)} y1={cy - (r - 10) * Math.sin(ccr)} x2={cx + (r + 10) * Math.cos(ccr)} y2={cy - (r + 10) * Math.sin(ccr)} stroke="rgba(255,255,255,.35)" strokeWidth="2" />
-        <circle cx={kx} cy={ky} r="7" fill="#0E0F13" stroke={color} strokeWidth="3" className="gauge-knob" />
+        <circle cx={kx} cy={ky} r="7" fill="#000" stroke={color} strokeWidth="3" className="gauge-knob" />
       </svg>
       <div className="gauge-read">
         <strong>{icr > 9999 ? "∞" : `${icr.toFixed(icr >= 1000 ? 0 : 1)}%`}</strong>
         <span>{label}</span>
+        {tone !== "safe" && <em className="gauge-status"><IconAlert size={11} />{tone === "warn" ? "Watch" : "At risk"}</em>}
       </div>
     </div>
   )

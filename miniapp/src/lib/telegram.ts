@@ -15,7 +15,6 @@ export function openExternal(url: string) {
 export interface WalletApp {
   id: string
   name: string
-  color: string
   /** Universal link that hands a WalletConnect URI to the app. */
   wc: (uri: string) => string
   /** Universal link that just brings the app to the front (to approve a pending request). */
@@ -27,10 +26,10 @@ export interface WalletApp {
 const enc = encodeURIComponent
 
 export const WALLETS: WalletApp[] = [
-  { id: "metamask", name: "MetaMask", color: "#f6851b", wc: (u) => `https://metamask.app.link/wc?uri=${enc(u)}`, open: "https://metamask.app.link/", dapp: (url) => `https://metamask.app.link/dapp/${url.replace(/^https?:\/\//, "")}` },
-  { id: "trust", name: "Trust Wallet", color: "#3375bb", wc: (u) => `https://link.trustwallet.com/wc?uri=${enc(u)}`, open: "https://link.trustwallet.com/", dapp: (url) => `https://link.trustwallet.com/open_url?coin_id=60&url=${enc(url)}` },
-  { id: "rainbow", name: "Rainbow", color: "#001e59", wc: (u) => `https://rnbwapp.com/wc?uri=${enc(u)}`, open: "https://rnbwapp.com/" },
-  { id: "coinbase", name: "Coinbase Wallet", color: "#0052ff", wc: (u) => `https://go.cb-w.com/wc?uri=${enc(u)}`, open: "https://go.cb-w.com/", dapp: (url) => `https://go.cb-w.com/dapp?cb_url=${enc(url)}` },
+  { id: "metamask", name: "MetaMask", wc: (u) => `https://metamask.app.link/wc?uri=${enc(u)}`, open: "https://metamask.app.link/", dapp: (url) => `https://metamask.app.link/dapp/${url.replace(/^https?:\/\//, "")}` },
+  { id: "trust", name: "Trust Wallet", wc: (u) => `https://link.trustwallet.com/wc?uri=${enc(u)}`, open: "https://link.trustwallet.com/", dapp: (url) => `https://link.trustwallet.com/open_url?coin_id=60&url=${enc(url)}` },
+  { id: "rainbow", name: "Rainbow", wc: (u) => `https://rnbwapp.com/wc?uri=${enc(u)}`, open: "https://rnbwapp.com/" },
+  { id: "coinbase", name: "Coinbase Wallet", wc: (u) => `https://go.cb-w.com/wc?uri=${enc(u)}`, open: "https://go.cb-w.com/", dapp: (url) => `https://go.cb-w.com/dapp?cb_url=${enc(url)}` },
 ]
 
 const CHOSEN = "keel:wallet-app"
