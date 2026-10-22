@@ -102,6 +102,10 @@ pnpm --filter @keel/bot start         # API + bot + alerts + keeper on :8787
 # expose :8787 over HTTPS (any tunnel) and set MINIAPP_URL to that URL
 ```
 
+**Hosting the Mini App:** the Vercel project builds from this repo on every push to `main` using the root `vercel.json` (install `@keel/miniapp` only, build, serve `miniapp/dist`, rewrite every path to `index.html`). Set `VITE_API_BASE` (the bot's public URL) and `VITE_WC_PROJECT_ID` in the Vercel project's environment. Always point Telegram at the production alias, never a per-deployment URL; the bot sets its menu button to `MINIAPP_URL` on start.
+
+**Wallets inside Telegram:** Telegram's webview blocks popups and custom URL schemes, so the Mini App drives WalletConnect itself and opens wallets with universal links via `Telegram.WebApp.openLink` (MetaMask, Trust, Rainbow, Coinbase Wallet), with copy-link and QR fallbacks. If that still fails, "Open in wallet browser" creates a one-time link (10 minutes, single use, bound to the Telegram user and the one step) that opens the same screen inside the wallet's own browser.
+
 In BotFather: `/newbot`, then `/newapp` (optional Direct Link short name → `MINIAPP_SHORTNAME`) pointing at `MINIAPP_URL`.
 
 ## Business viability
