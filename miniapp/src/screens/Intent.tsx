@@ -3,21 +3,31 @@ import { useQuery } from "@tanstack/react-query"
 import type { Hex, WalletClient } from "viem"
 import { api, tg, type IntentDto } from "../lib/api"
 import { buildPlan, type Plan } from "../lib/plan"
-import { Card, Rows, Warn, WalletGate, closeApp, haptic, shortError } from "../components"
+import { go, useRefreshAll } from "../lib/data"
+import { big, fmtMusd } from "../lib/units"
+import { AmountInput, Button, Glass, KeelMark, MezoBadge, Notice, Rows, Skeleton, StateView } from "../ui/kit"
+import { Header } from "../ui/shell"
+import { IconCheck, IconExternal } from "../ui/icons"
+import { explorerFor } from "../ui/activity"
+import { WalletGate, closeApp, haptic, shortError } from "../components"
 import type { AppCtx } from "../App"
 
 const NEEDS_AMOUNT = new Set(["repay", "add_collateral", "fund_reserve"])
 const unit = (t: string) => (t === "repay" ? "MUSD" : "BTC")
 
+/** Review and sign: the one place every transaction goes through, whether it started in the bot or the app. */
 export function Intent({ ctx, id }: { ctx: AppCtx; id?: string }) {
   const q = useQuery({ queryKey: ["intent", id], queryFn: () => api.intent(id!), enabled: !!id })
-  if (!id) return <Card><p>Missing link.</p></Card>
-  if (q.isLoading) return <Card><p>Loading…</p></Card>
-  if (q.error) return <Card><p className="warn">{shortError(q.error)}</p><p className="muted">Open this from the Keel chat in Telegram.</p></Card>
+  if (!id) return <StateView kind="error" title="Missing link" body="Open this from the Keel chat in Telegram." />
+  if (q.isLoading) return (<><Header title="Review" back /><Glass><Skeleton h={22} w="50%" /><Skeleton h={160} style={{ marginTop: 14 }} /></Glass></>)
+  if (q.error) return <StateView kind="error" title="Can't open this request" body={`${shortError(q.error)}. Open it from the Keel chat in Telegram.`} />
   const intent = q.data!
-  if (intent.status !== "pending") return <Card><h2>Already done ✅</h2><button className="btn" onClick={closeApp}>Back to Telegram</button></Card>
+  if (intent.status !== "pending") return <StateView kind="success" title="Already done" body="This request was completed." action={<Button onClick={() => go("/")}>Open dashboard</Button>} />
   return (
-    <WalletGate ctx={ctx}>{({ account, wallet }) => <Review ctx={ctx} intent={intent} account={account} wallet={wallet} />}</WalletGate>
+    <>
+      <Header title="Review & sign" greeting="Confirm" back />
+      <WalletGate ctx={ctx} title="Connect to sign">{({ account, wallet }) => <Review ctx={ctx} intent={intent} account={account} wallet={wallet} />}</WalletGate>
+    </>
   )
 }
 
@@ -28,6 +38,7 @@ function Review({ ctx, intent, account, wallet }: { ctx: AppCtx; intent: IntentD
   const [err, setErr] = useState("")
   const [stepIdx, setStepIdx] = useState(-1)
   const [done, setDone] = useState<{ tx: Hex; claimKey?: Hex } | null>(null)
+  const refresh = useRefreshAll()
 
   useEffect(() => {
     let live = true
@@ -55,6 +66,7 @@ function Review({ ctx, intent, account, wallet }: { ctx: AppCtx; intent: IntentD
       setStepIdx(-1)
       await api.complete(intent.id, { status: "done", txHash: last }).catch(() => undefined)
       haptic("success")
+      refresh()
       setDone({ tx: last, claimKey: plan.claimKey })
     } catch (e) {
       setStepIdx(-1)
@@ -67,43 +79,49 @@ function Review({ ctx, intent, account, wallet }: { ctx: AppCtx; intent: IntentD
 
   return (
     <>
-      <h2>{plan?.title ?? "Review"}</h2>
       {needsInput && (
-        <Card>
-          <label className="field">
-            Amount ({unit(intent.type)})
-            <input inputMode="decimal" placeholder="0.0" value={typed} onChange={(e) => setTyped(e.target.value.replace(",", "."))} />
-          </label>
-        </Card>
+        <Glass>
+          <span className="label">Amount</span>
+          <AmountInput value={typed} onChange={setTyped} unit={unit(intent.type)} placeholder="0.0" />
+        </Glass>
       )}
       {plan ? (
-        <Card>
+        <Glass orb="gold" className="review">
+          <div className="review-head">
+            <KeelMark size={34} />
+            <h2>{plan.title}</h2>
+          </div>
           <Rows rows={plan.rows} />
-          <Warn items={plan.warnings} />
-        </Card>
+          {plan.warnings.map((w) => <Notice key={w} tone={plan.blocked ? "danger" : "warn"}>{w}</Notice>)}
+        </Glass>
       ) : !needsInput || typed ? (
-        <Card><p className="muted">{err || "Reading the latest on-chain numbers…"}</p></Card>
+        <Glass>
+          {err ? <Notice tone="danger">{err}</Notice> : (<><Skeleton h={22} w="45%" /><Skeleton h={130} style={{ marginTop: 14 }} /><p className="muted small">Reading the latest on-chain numbers…</p></>)}
+        </Glass>
       ) : null}
       {plan && plan.steps.length > 0 && (
-        <>
+        <Glass className="sign">
           <ol className="steps">
             {plan.steps.map((s, i) => (
-              <li key={s.label} className={i === stepIdx ? "on" : i < stepIdx ? "ok" : ""}>{s.label}</li>
+              <li key={s.label} className={i === stepIdx ? "on" : i < stepIdx ? "ok" : ""}>
+                <span className="step-dot">{i < stepIdx ? <IconCheck size={14} /> : i + 1}</span>
+                {s.label}
+              </li>
             ))}
           </ol>
-          <button className="btn" disabled={plan.blocked || stepIdx >= 0} onClick={run}>
-            {stepIdx >= 0 ? `Confirm in your wallet (${stepIdx + 1}/${plan.steps.length})…` : plan.steps.length > 1 ? `Confirm ${plan.steps.length} steps` : "Confirm"}
-          </button>
-        </>
+          {err && <Notice tone="danger">{err}</Notice>}
+          <Button busy={stepIdx >= 0} disabled={plan.blocked} onClick={run}>
+            {stepIdx >= 0 ? `Confirm in your wallet (${stepIdx + 1}/${plan.steps.length})` : plan.steps.length > 1 ? `Sign ${plan.steps.length} steps` : "Sign"}
+          </Button>
+          <p className="muted small center-text">You sign in your own wallet. Keel never has access to your funds.</p>
+        </Glass>
       )}
-      {err && plan && <p className="warn">{err}</p>}
-      <p className="muted small">You sign in your own wallet. Keel never has access to your funds.</p>
     </>
   )
 }
 
 function Done({ ctx, intent, done }: { ctx: AppCtx; intent: IntentDto; done: { tx: Hex; claimKey?: Hex } }) {
-  const explorer = ctx.cfg.network === "mainnet" ? "https://explorer.mezo.org" : "https://explorer.test.mezo.org"
+  const explorer = explorerFor(ctx.cfg.network)
   const key = done.claimKey?.slice(2)
   const link = key
     ? ctx.cfg.miniappShortName
@@ -111,31 +129,49 @@ function Done({ ctx, intent, done }: { ctx: AppCtx; intent: IntentDto; done: { t
       : `https://t.me/${ctx.cfg.botUsername}?start=claim_${key}`
     : null
   const [copied, setCopied] = useState(false)
-  return (
-    <Card>
-      <h2>Done ✅</h2>
-      {link ? (
-        <>
-          <p>Share this link with the person you're paying. <b>Anyone with the link can claim</b>, so send it privately.</p>
-          <p className="mono small">{link}</p>
-          <button
-            className="btn"
+  const txLink = (
+    <a className="tx-link" href={`${explorer}/tx/${done.tx}`} target="_blank" rel="noreferrer">View transaction <IconExternal size={14} /></a>
+  )
+  if (link) {
+    return (
+      <>
+        <div className="share-card">
+          <span className="orb orb-gold" aria-hidden />
+          <div className="share-top"><KeelMark size={30} /><MezoBadge label="Mezo" /></div>
+          <span className="label">You're sending</span>
+          <strong className="huge">{fmtMusd(big(intent.params.amount), 2)}</strong>
+          <p className="muted small">{intent.params.forName ? `For ${intent.params.forName} · ` : ""}Claim in one tap, no wallet needed. Refunds after 72h if unclaimed.</p>
+          <p className="mono tiny">{link}</p>
+        </div>
+        <Glass>
+          <Notice tone="info">Anyone with this link can claim, so share it privately.</Notice>
+          <Button
             onClick={() => {
-              const share = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent("I sent you MUSD 🎁 Tap to claim:")}`
+              const share = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent("I sent you MUSD. Tap to claim:")}`
               if (tg?.openTelegramLink) tg.openTelegramLink(share)
               else void navigator.clipboard.writeText(link).then(() => setCopied(true))
             }}
           >
-            {tg ? "Share in Telegram" : copied ? "Copied ✓" : "Copy link"}
-          </button>
-          <p className="muted small">Lose the link? You can cancel and get a refund any time; unclaimed links also refund after expiry.</p>
-        </>
-      ) : (
-        <p>{intent.type === "borrow" ? "Your loan is open and the MUSD is in your wallet." : "Transaction confirmed."}</p>
-      )}
-      <p><a href={`${explorer}/tx/${done.tx}`} target="_blank" rel="noreferrer">View transaction ↗</a></p>
-      <button className="btn secondary" onClick={closeApp}>Back to Telegram</button>
-    </Card>
+            {tg ? "Share in Telegram" : copied ? "Copied" : "Copy link"}
+          </Button>
+          <Button variant="quiet" onClick={() => void navigator.clipboard?.writeText(link).then(() => setCopied(true))}>{copied ? "Copied" : "Copy link"}</Button>
+          {txLink}
+        </Glass>
+      </>
+    )
+  }
+  return (
+    <StateView
+      kind="success"
+      title="Confirmed"
+      body={intent.type === "borrow" ? "Your loan is open and the MUSD is in your wallet." : intent.type === "protect_config" ? "Protection settings saved." : "Transaction confirmed on Mezo."}
+      action={
+        <div className="stack">
+          <Button onClick={() => go("/")}>Back to dashboard</Button>
+          {tg && <Button variant="quiet" onClick={closeApp}>Back to chat</Button>}
+          {txLink}
+        </div>
+      }
+    />
   )
 }
-

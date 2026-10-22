@@ -24,6 +24,7 @@ export interface ChainService {
   guardianCount(): Promise<number>
   blockNumber(): Promise<bigint>
   balance(address: Address): Promise<bigint>
+  blockTime(block: bigint): Promise<number>
   /** Receipt summary for completion checks; null if not mined yet. */
   receipt(hash: string): Promise<{ ok: boolean; from: Address } | null>
   /** Keeper `Protected` events emitted by the given guardians in [from, to]. */
@@ -32,7 +33,7 @@ export interface ChainService {
   incomingTransfers(addresses: Address[], from: bigint, to: bigint): Promise<TransferEvent[]>
 }
 
-export interface ProtectedEvent { guardian: Address; btcAdded: bigint; musdRepaid: bigint; icrBefore: bigint; icrAfter: bigint; tx: string }
+export interface ProtectedEvent { guardian: Address; btcAdded: bigint; musdRepaid: bigint; icrBefore: bigint; icrAfter: bigint; tx: string; block?: bigint }
 export interface TransferEvent { from: Address; to: Address; value: bigint; tx: string }
 
 const protectedEvent = parseAbiItem("event Protected(address indexed keeper, uint8 action, uint256 btcAdded, uint256 musdRepaid, uint256 icrBefore, uint256 icrAfter, uint256 tipBTC, uint256 tipMUSD)")
@@ -105,6 +106,10 @@ export class LiveChain implements ChainService {
     return this.client.getBlockNumber()
   }
 
+  async blockTime(block: bigint): Promise<number> {
+    return Number((await this.client.getBlock({ blockNumber: block })).timestamp)
+  }
+
   balance(address: Address): Promise<bigint> {
     return this.client.getBalance({ address })
   }
@@ -114,7 +119,7 @@ export class LiveChain implements ChainService {
     const logs = await this.client.getLogs({ address: guardians, event: protectedEvent, fromBlock: from, toBlock: to })
     return logs.map((l) => ({
       guardian: l.address, btcAdded: l.args.btcAdded!, musdRepaid: l.args.musdRepaid!,
-      icrBefore: l.args.icrBefore!, icrAfter: l.args.icrAfter!, tx: l.transactionHash,
+      icrBefore: l.args.icrBefore!, icrAfter: l.args.icrAfter!, tx: l.transactionHash, block: l.blockNumber,
     }))
   }
 

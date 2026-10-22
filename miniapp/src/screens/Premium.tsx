@@ -5,7 +5,10 @@ import { wrapFetchWithPayment } from "@x402/fetch"
 import { ExactEvmScheme, toClientEvmSigner } from "@x402/evm"
 import type { PublicClient, WalletClient } from "viem"
 import { apiUrl, tg } from "../lib/api"
-import { Card, WalletGate, closeApp, haptic, shortError } from "../components"
+import { WalletGate, closeApp, haptic, shortError } from "../components"
+import { Button, Glass, Notice, Skeleton, StateView } from "../ui/kit"
+import { Header } from "../ui/shell"
+import { IconStar } from "../ui/icons"
 import type { AppCtx } from "../App"
 
 interface Status {
@@ -42,23 +45,26 @@ export function Premium({ ctx }: { ctx: AppCtx }) {
     setBusy(false)
   }
 
-  if (status.isLoading) return <Card><p>Loading…</p></Card>
-  if (status.error || !status.data || (status.data as { error?: string }).error) return <Card><p className="warn">Premium isn't available right now.</p></Card>
+  if (status.isLoading) return (<><Header title="Premium" back /><Glass><Skeleton h={140} /></Glass></>)
+  if (status.error || !status.data || (status.data as { error?: string }).error) return <StateView kind="error" title="Premium unavailable" body="Premium alerts aren't enabled right now." />
   const s = status.data
-  if (done) return <Card><h2>Premium is on ⭐</h2><p>You'll get alerts within seconds. Back to the chat.</p><button className="btn" onClick={closeApp}>Done</button></Card>
+  if (done) return <StateView kind="success" title="Premium is on" body="Your loan is now checked every few seconds." action={<Button onClick={closeApp}>Done</Button>} />
   return (
     <>
-      <h2>⭐ Keel Premium</h2>
-      <Card>
-        <p>Free alerts check your loan every few minutes. Premium checks it every few seconds.</p>
-        <p><b>{s.priceMusd} MUSD</b> for {s.days} days. No subscription, no card: you pay once, per use, in MUSD, with a signature (x402). {s.active && <>Active until {new Date(s.until * 1000).toLocaleDateString()}.</>}</p>
-      </Card>
+      <Header title="Premium" greeting="Faster alerts" back />
+      <Glass orb="gold" className="premium">
+        <span className="premium-star"><IconStar size={28} /></span>
+        <strong className="huge">{s.priceMusd} MUSD</strong>
+        <span className="muted">for {s.days} days</span>
+        <p className="muted small center-text">Free alerts check your loan every few minutes. Premium checks it every few seconds. No subscription, no card: you pay once in MUSD with a signature (x402).</p>
+        {s.active && <Notice tone="info">Active until {new Date(s.until * 1000).toLocaleDateString()}.</Notice>}
+      </Glass>
       <WalletGate ctx={ctx}>
         {({ account, wallet }) => (
-          <>
-            <button className="btn" disabled={busy} onClick={() => pay(account, wallet)}>{busy ? "Waiting for your wallet…" : s.active ? "Extend" : "Pay with MUSD"}</button>
-            {err && <p className="warn">{err}</p>}
-          </>
+          <Glass>
+            {err && <Notice tone="danger">{err}</Notice>}
+            <Button busy={busy} onClick={() => pay(account, wallet)}>{s.active ? "Extend" : "Pay with MUSD"}</Button>
+          </Glass>
         )}
       </WalletGate>
     </>

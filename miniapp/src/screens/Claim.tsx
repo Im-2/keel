@@ -5,7 +5,11 @@ import { privateKeyToAccount, generatePrivateKey } from "viem/accounts"
 import type { Address, Hex } from "viem"
 import { fmtMusd } from "@keel/shared"
 import { api, ApiError } from "../lib/api"
-import { Card, closeApp, haptic, shortError } from "../components"
+import { short } from "../lib/units"
+import { Button, Glass, KeelMark, MezoBadge, Notice, Skeleton, StateView } from "../ui/kit"
+import { IconGift, IconWallet } from "../ui/icons"
+import { explorerFor } from "../ui/activity"
+import { closeApp, haptic, shortError } from "../components"
 import type { AppCtx } from "../App"
 
 const NEW_WALLET_KEY = "keel:claim-wallet"
@@ -21,6 +25,7 @@ export function Claim({ ctx, keyHex }: { ctx: AppCtx; keyHex?: string }) {
   const [tx, setTx] = useState("")
   const [busy, setBusy] = useState(false)
   const [fresh, setFresh] = useState<{ address: Address; key: Hex } | null>(null)
+  const [saved, setSaved] = useState(false)
 
   const linkKey = keyHex && /^[0-9a-fA-F]{64}$/.test(keyHex) ? (`0x${keyHex}` as Hex) : null
   const linkAccount = linkKey ? privateKeyToAccount(linkKey) : null
@@ -30,7 +35,7 @@ export function Claim({ ctx, keyHex }: { ctx: AppCtx; keyHex?: string }) {
     api.claimInfo(linkAccount.address).then((i) => setInfo({ amount: BigInt(i.amount), settled: i.settled, expiry: i.expiry })).catch((e) => setErr(e instanceof ApiError ? e.message : shortError(e)))
   }, [linkKey])
 
-  if (!linkAccount) return <Card><p className="warn">This claim link is incomplete. Ask the sender to share it again.</p></Card>
+  if (!linkAccount) return <StateView kind="error" title="Incomplete link" body="This claim link is missing its key. Ask the sender to share it again." />
 
   async function claim(to: Address) {
     setBusy(true)
@@ -53,42 +58,51 @@ export function Claim({ ctx, keyHex }: { ctx: AppCtx; keyHex?: string }) {
 
   if (tx) {
     return (
-      <Card>
-        <h2>Claimed 🎉</h2>
-        <p>{info ? fmtMusd(info.amount, 2) : "Your MUSD"} is on its way to your wallet.</p>
+      <div className="claim">
+        <StateView kind="success" title="Claimed" body={`${info ? fmtMusd(info.amount, 2) : "Your MUSD"} is in your wallet. Keel paid the gas.`} />
         {fresh && (
-          <>
-            <p className="warn">Save your new wallet's private key now. Import it into any wallet app to use the funds:</p>
-            <p className="mono small">{fresh.key}</p>
-          </>
+          <Glass orb="amber">
+            <h3>Save your new wallet</h3>
+            <Notice tone="danger">This key is the only way to reach the funds. Copy it now and import it into any wallet app.</Notice>
+            <p className="mono tiny keybox">{fresh.key}</p>
+            <Button variant="ghost" onClick={() => void navigator.clipboard?.writeText(fresh.key).then(() => setSaved(true))}>{saved ? "Copied" : "Copy key"}</Button>
+          </Glass>
         )}
-        <button className="btn secondary" onClick={closeApp}>Done</button>
-      </Card>
+        <a className="tx-link center-text" href={`${explorerFor(ctx.cfg.network)}/tx/${tx}`} target="_blank" rel="noreferrer">View transaction</a>
+        <Button variant="quiet" onClick={closeApp}>Done</Button>
+      </div>
     )
   }
 
   const expired = info ? info.expiry * 1000 < Date.now() : false
   return (
-    <>
-      <h2>🎁 You received {info ? fmtMusd(info.amount, 2) : "MUSD"}</h2>
-      <p className="muted">MUSD is a dollar stablecoin on Mezo. Choose where to receive it. It's free: Keel pays the gas.</p>
-      {info?.settled && <Card><p className="warn">This link was already claimed or cancelled.</p></Card>}
-      {expired && !info?.settled && <Card><p className="warn">This link has expired.</p></Card>}
-      {!info?.settled && !expired && (
+    <div className="claim">
+      <div className="share-card">
+        <span className="orb orb-gold" aria-hidden />
+        <div className="share-top"><KeelMark size={30} /><MezoBadge label="Mezo" /></div>
+        <span className="claim-gift"><IconGift size={28} /></span>
+        <span className="label">Someone sent you</span>
+        {info ? <strong className="huge">{fmtMusd(info.amount, 2)}</strong> : err ? <strong className="huge">MUSD</strong> : <Skeleton h={38} w={180} />}
+        <p className="muted small">MUSD is a dollar stablecoin on Mezo, backed by Bitcoin. Claiming is free.</p>
+      </div>
+      {err && !info && <Notice tone="danger">{err}</Notice>}
+      {info?.settled && <StateView kind="empty" title="Already claimed" body="This link was claimed or cancelled by the sender." />}
+      {expired && !info?.settled && <StateView kind="error" title="Link expired" body="The funds went back to the sender. Ask them for a new link." />}
+      {info && !info.settled && !expired && (
         <>
-          <Card>
-            <h3>I have a wallet</h3>
+          <Glass>
+            <div className="opt-head"><IconWallet /><h3>I have a wallet</h3></div>
             {address ? (
-              <button className="btn" disabled={busy} onClick={() => claim(address)}>{busy ? "Claiming…" : `Claim to ${address.slice(0, 6)}…${address.slice(-4)}`}</button>
+              <Button busy={busy} onClick={() => claim(address)}>Claim to {short(address)}</Button>
             ) : (
-              <div className="center"><ConnectButton showBalance={false} chainStatus="none" /></div>
+              <div className="center"><ConnectButton showBalance={false} chainStatus="none" label="Connect wallet" /></div>
             )}
-          </Card>
-          <Card>
-            <h3>I don't have one yet</h3>
-            <p className="muted small">We'll create a wallet on this device. You'll see its recovery key once, so save it.</p>
-            <button
-              className="btn secondary"
+          </Glass>
+          <Glass>
+            <div className="opt-head"><IconGift /><h3>I don't have one yet</h3></div>
+            <p className="muted small">We'll create a wallet on this device and show its key once, so you can save it.</p>
+            <Button
+              variant="ghost"
               disabled={busy}
               onClick={() => {
                 const key = generatePrivateKey()
@@ -101,11 +115,11 @@ export function Claim({ ctx, keyHex }: { ctx: AppCtx; keyHex?: string }) {
               }}
             >
               Create a wallet and claim
-            </button>
-          </Card>
+            </Button>
+          </Glass>
+          {err && <Notice tone="danger">{err}</Notice>}
         </>
       )}
-      {err && <p className="warn">{err}</p>}
-    </>
+    </div>
   )
 }

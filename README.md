@@ -1,4 +1,6 @@
-# Keel ⚓
+<p align="center"><img src="docs/assets/keel-icon.png" width="120" alt="Keel" /></p>
+
+# Keel
 
 **A BTC-backed dollar account inside Telegram, built on Mezo's MUSD. Non-custodial, with a guardian that protects your loan.**
 
@@ -45,7 +47,7 @@ Bitcoin holders want dollars without selling. Mezo's MUSD gives them an interest
 - `contracts/contracts/keel/` — `KeelGuardian`, `KeelGuardianFactory` (EIP-1167 clones, deterministic addresses), `KeelPay`.
 - `shared/` — ABIs, chain config, risk math (ICR, liquidation price, borrow quotes, redemption rank), batched read client.
 - `bot/` — Telegram bot, HTTP API (Hono), alerts, keeper, claim relayer, x402 premium.
-- `miniapp/` — wallet linking, review-and-sign screens, claim, premium.
+- `miniapp/` — dark glass Mini App: dashboard with safety gauge, borrow / repay / collateral with live quotes, protection settings, send and claim links, activity, wallet linking, a shared review-and-sign screen, premium.
 
 ## Security model
 

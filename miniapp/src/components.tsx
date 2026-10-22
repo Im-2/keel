@@ -2,68 +2,36 @@ import { useAccount, useSwitchChain, useWalletClient } from "wagmi"
 import { ConnectButton } from "@rainbow-me/rainbowkit"
 import type { ReactNode } from "react"
 import type { WalletClient } from "viem"
-import { MCR, E18 } from "@keel/shared"
 import { tg } from "./lib/api"
+import { Button, Glass, KeelMark, MezoBadge, Skeleton } from "./ui/kit"
 import type { AppCtx } from "./App"
 
-export const Card = ({ children }: { children: ReactNode }) => <section className="card">{children}</section>
-
-export function Rows({ rows }: { rows: Array<[string, string]> }) {
-  return (
-    <dl className="rows">
-      {rows.map(([k, v]) => (
-        <div key={k}>
-          <dt>{k}</dt>
-          <dd>{v}</dd>
-        </div>
-      ))}
-    </dl>
-  )
-}
-
-export const Warn = ({ items }: { items: string[] }) => (
-  <>
-    {items.map((w) => (
-      <p key={w} className="warn">⚠️ {w}</p>
-    ))}
-  </>
-)
-
-export function Gauge({ icr }: { icr: bigint }) {
-  const hi = (25n * E18) / 10n
-  const c = icr < MCR ? MCR : icr > hi ? hi : icr
-  const frac = Number(((c - MCR) * 1000n) / (hi - MCR)) / 10
-  const tone = icr < (13n * E18) / 10n ? "bad" : icr < (15n * E18) / 10n ? "mid" : "ok"
-  return (
-    <div className="gauge" aria-label="collateral ratio">
-      <div className={`fill ${tone}`} style={{ width: `${Math.max(3, frac)}%` }} />
-      <i style={{ left: `${(Number(((15n * E18) / 10n - MCR) * 1000n / (hi - MCR)) / 10)}%` }} title="150%" />
-    </div>
-  )
-}
-
 /** Requires a connected wallet on the right chain; renders `children(account, wallet)` once ready. */
-export function WalletGate({ ctx, children }: { ctx: AppCtx; children: (a: { account: `0x${string}`; wallet: WalletClient }) => ReactNode }) {
+export function WalletGate({ ctx, children, title = "Connect your wallet", showMark = true }: { ctx: AppCtx; title?: string; showMark?: boolean; children: (a: { account: `0x${string}`; wallet: WalletClient }) => ReactNode }) {
   const { address, chainId } = useAccount()
   const { data: wallet } = useWalletClient()
   const { switchChain } = useSwitchChain()
   if (!address) {
     return (
-      <Card>
-        <p>Connect the wallet that holds your BTC.</p>
-        <div className="center"><ConnectButton showBalance={false} chainStatus="none" /></div>
-      </Card>
+      <Glass orb="gold" className="connect">
+        {showMark && <div className="connect-mark"><span className="splash-glow" aria-hidden /><KeelMark size={64} /></div>}
+        <h2>{title}</h2>
+        <p className="muted small center-text">Use the wallet that holds your BTC. Keel never sees your keys: you approve every action yourself.</p>
+        <div className="center"><ConnectButton showBalance={false} chainStatus="none" label="Connect wallet" /></div>
+        <div className="center"><MezoBadge /></div>
+      </Glass>
     )
   }
   if (chainId !== ctx.cfg.chainId) {
     return (
-      <Card>
-        <p>Switch to Mezo {ctx.cfg.network} to continue.</p>
-        <button className="btn" onClick={() => switchChain({ chainId: ctx.cfg.chainId })}>Switch network</button>
-      </Card>
+      <Glass orb="amber" className="connect">
+        <h2>Switch network</h2>
+        <p className="muted small center-text">Keel runs on Mezo {ctx.cfg.network}.</p>
+        <Button onClick={() => switchChain({ chainId: ctx.cfg.chainId })}>Switch to Mezo</Button>
+      </Glass>
     )
   }
-  if (!wallet) return <Card><p>Preparing your wallet…</p></Card>
+  if (!wallet) return <Glass><Skeleton h={24} w="50%" /><Skeleton h={48} style={{ marginTop: 14 }} /></Glass>
   return <>{children({ account: address, wallet: wallet as WalletClient })}</>
 }
 

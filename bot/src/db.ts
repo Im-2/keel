@@ -150,6 +150,10 @@ export class Store {
     const r = this.db.prepare("SELECT * FROM intents WHERE id = ?").get(id) as Record<string, unknown> | undefined
     return r ? ({ ...r, params: JSON.parse(r.params as string) } as unknown as IntentRow) : null
   }
+  listIntents(tgId: number, limit = 30): IntentRow[] {
+    const rows = this.db.prepare("SELECT * FROM intents WHERE tg_id = ? ORDER BY created_at DESC, rowid DESC LIMIT ?").all(tgId, limit) as Record<string, unknown>[]
+    return rows.map((r) => ({ ...r, params: JSON.parse(r.params as string) }) as unknown as IntentRow)
+  }
   completeIntent(id: string, status: "done" | "failed", txHash?: string) {
     this.db.prepare("UPDATE intents SET status = ?, tx_hash = ? WHERE id = ? AND status = 'pending'").run(status, txHash ?? null, id)
   }

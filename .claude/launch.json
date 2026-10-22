@@ -1,0 +1,6 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    { "name": "miniapp", "runtimeExecutable": "pnpm", "runtimeArgs": ["--filter", "@keel/miniapp", "dev"], "port": 5173 }
+  ]
+}

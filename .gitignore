@@ -33,3 +33,6 @@ dist/
 .vercel
 .bot.log
 .deploy/
+ui/keelui.mp4
+ui/keel-logos.zip
+ui/frames/

@@ -11,6 +11,7 @@ import { renderRequest, esc } from "./format"
 import { validateInitData, type InitData } from "./telegram-auth"
 import { payKeyboard } from "./bot"
 import { mountPremium, type Premium } from "./premium"
+import { mountAppRoutes } from "./app-api"
 
 export interface ApiDeps {
   config: Config
@@ -105,6 +106,7 @@ export function createApi(d: ApiDeps) {
     return store.upsertUser(user.id, user.username, user.first_name)
   }
   if (d.premium) mountPremium(app, { config, premium: d.premium, auth: auth as never, tgIdOf: ((c: Context) => tgOf(c).user.id) as never, onGranted: (tgId, until) => notifier.send(tgId, `⭐ <b>Keel Premium is on</b> until ${new Date(until * 1000).toISOString().slice(0, 10)}: your loan is now checked every few seconds instead of minutes.`) })
+  mountAppRoutes(app, { store, chain, auth: auth as never, userOf })
   app.use("/api/me", auth)
   app.use("/api/nonce", auth)
   app.use("/api/bind", auth)

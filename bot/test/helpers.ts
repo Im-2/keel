@@ -47,6 +47,7 @@ export class FakeChain implements ChainService {
   async blockNumber() { return this.head }
   btc = 10n * E18
   async balance() { return this.btc }
+  async blockTime() { return 1_700_000_000 }
   async receipt(h: string) { return this.receipts.get(h) ?? null }
   async protectedEvents() { return this.protectedLogs }
   async incomingTransfers() { return this.transfers }

@@ -212,3 +212,43 @@ describe("premium", () => {
     expect(notifier.sent.map((m) => m.to).sort()).toEqual([42, 43])
   })
 })
+
+describe("mini app routes", () => {
+  const init2 = (id = 42) => signInitData({ auth_date: String(Math.floor(Date.now() / 1000)), user: JSON.stringify({ id, username: "ada", first_name: "Ada" }) }, TOKEN)
+  const mk2 = () => {
+    const s = setup()
+    const app = createApi({ config, store: s.store, chain: s.chain, notifier: s.notifier })
+    const req = (method: string, path: string, body?: unknown, id = 42) =>
+      app.request(path, { method, headers: { "content-type": "application/json", "x-telegram-init-data": init2(id) }, body: body === undefined ? undefined : JSON.stringify(body) })
+    return { ...s, req }
+  }
+
+  it("serves the position with bigints as strings, and the activity list", async () => {
+    const { chain, req, store } = mk2()
+    chain.setView(ADA, { trove: trove(pct(160)), guardian: guardian() })
+    const p = (await (await req("GET", "/api/position")).json()) as { linked: boolean; trove: { icr: string }; guardian: { enabled: boolean }; wallet: { btc: string } }
+    expect(p.linked).toBe(true)
+    expect(p.trove.icr).toBe(pct(160).toString())
+    expect(p.guardian.enabled).toBe(true)
+    expect(p.wallet.btc).toBe((10n * E18).toString())
+    const i = store.createIntent(42, "repay", { amount: "1" })
+    store.completeIntent(i.id, "done", "0x" + "1".repeat(64))
+    const a = (await (await req("GET", "/api/activity")).json()) as { items: Array<{ type: string }> }
+    expect(a.items.map((x) => x.type)).toEqual(["repay"])
+  })
+
+  it("creates validated intents and resolves @handles for send", async () => {
+    const { req, store } = mk2()
+    const ok = (await (await req("POST", "/api/intent", { type: "borrow", amount: (1800n * E18).toString(), targetIcr: pct(160).toString(), evil: "x" })).json()) as { id: string; params: Record<string, unknown> }
+    expect(store.getIntent(ok.id)!.params).toEqual({ amount: (1800n * E18).toString(), targetIcr: pct(160).toString() })
+    expect((await req("POST", "/api/intent", { type: "borrow", amount: "1", targetIcr: pct(105).toString() })).status).toBe(400)
+    expect((await req("POST", "/api/intent", { type: "close" })).status).toBe(400)
+    const miss = await req("POST", "/api/intent", { type: "send", to: "@nobody", amount: "5" })
+    expect(miss.status).toBe(404)
+    store.upsertUser(7, "bob", "Bob")
+    store.setAddress(7, BOB)
+    const sent = (await (await req("POST", "/api/intent", { type: "send", to: "@bob", amount: "5" })).json()) as { params: { to: string } }
+    expect(sent.params.to).toBe(BOB)
+    expect((await req("POST", "/api/intent", { type: "repay", amount: "5" }, 99)).status).toBe(400) // unlinked user
+  })
+})

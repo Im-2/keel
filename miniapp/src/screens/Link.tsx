@@ -1,34 +1,41 @@
 import { useState } from "react"
-import { useAccount } from "wagmi"
+import { useQueryClient } from "@tanstack/react-query"
 import { api } from "../lib/api"
-import { Card, WalletGate, closeApp, haptic, shortError } from "../components"
+import { go } from "../lib/data"
+import { short } from "../lib/units"
+import { Button, Glass, KeelMark, MezoBadge, Notice, StateView } from "../ui/kit"
+import { WalletGate, haptic, shortError } from "../components"
 import type { AppCtx } from "../App"
 
 export function Link({ ctx }: { ctx: AppCtx }) {
-  const { address } = useAccount()
+  const qc = useQueryClient()
   const [state, setState] = useState<"idle" | "signing" | "done">("idle")
   const [err, setErr] = useState("")
   if (state === "done") {
     return (
-      <Card>
-        <h2>Wallet linked ✅</h2>
-        <p className="mono">{address}</p>
-        <p>Back in the chat, try <b>/position</b> or <b>/borrow 5000</b>.</p>
-        <button className="btn" onClick={closeApp}>Back to Telegram</button>
-      </Card>
+      <StateView
+        kind="success"
+        title="Wallet linked"
+        body="You're set. Borrow against your BTC, turn on protection, or pay a friend."
+        action={<Button onClick={() => go("/")}>Open dashboard</Button>}
+      />
     )
   }
   return (
-    <>
-      <h2>Connect your wallet</h2>
-      <p className="muted">One free signature proves the wallet is yours. Keel never holds your keys.</p>
-      <WalletGate ctx={ctx}>
+    <div className="connect-screen">
+      <div className="connect-hero">
+        <KeelMark size={56} />
+        <h1>Keel</h1>
+        <p className="muted">Dollars against your Bitcoin, inside Telegram.<br />Non-custodial, protected by a guardian.</p>
+      </div>
+      <WalletGate ctx={ctx} showMark={false}>
         {({ account, wallet }) => (
-          <Card>
-            <p className="mono">{account}</p>
-            <button
-              className="btn"
-              disabled={state === "signing"}
+          <Glass orb="gold" className="connect">
+            <h2>One signature to link</h2>
+            <p className="muted small center-text">Proves <b className="mono">{short(account)}</b> is yours. It's free and moves no funds.</p>
+            {err && <Notice tone="danger">{err}</Notice>}
+            <Button
+              busy={state === "signing"}
               onClick={async () => {
                 setState("signing")
                 setErr("")
@@ -37,6 +44,7 @@ export function Link({ ctx }: { ctx: AppCtx }) {
                   const signature = await wallet.signMessage({ account, message })
                   await api.bind({ nonce, address: account, signature })
                   haptic("success")
+                  void qc.invalidateQueries({ queryKey: ["position"] })
                   setState("done")
                 } catch (e) {
                   setErr(shortError(e))
@@ -44,12 +52,12 @@ export function Link({ ctx }: { ctx: AppCtx }) {
                 }
               }}
             >
-              {state === "signing" ? "Waiting for signature…" : "Sign & link (free)"}
-            </button>
-            {err && <p className="warn">{err}</p>}
-          </Card>
+              {state === "signing" ? "Waiting for signature…" : "Sign & link"}
+            </Button>
+            <div className="center"><MezoBadge /></div>
+          </Glass>
         )}
       </WalletGate>
-    </>
+    </div>
   )
 }
