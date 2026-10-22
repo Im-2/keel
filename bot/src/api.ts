@@ -38,7 +38,7 @@ export function createApi(d: ApiDeps) {
       return "*"
     }
   })()
-  app.use("/api/*", cors({ origin: [miniappOrigin, "http://localhost:5173", "https://localhost:5173"], allowHeaders: ["content-type", INIT_HEADER] }))
+  app.use("/api/*", cors({ origin: [miniappOrigin, "http://localhost:5173", "https://localhost:5173"], exposeHeaders: ["*"] }))
 
   app.get("/healthz", (c) => c.json({ ok: true, network: config.network }))
 

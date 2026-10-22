@@ -36,6 +36,9 @@ export interface IntentDto {
   status: "pending" | "done" | "failed"
 }
 
+/** Backend origin when the Mini App is hosted separately from the bot server (set at build time). */
+export const apiUrl = (path: string) => `${(import.meta.env.VITE_API_BASE as string | undefined)?.replace(/\/$/, "") ?? ""}${path}`
+
 export class ApiError extends Error {
   constructor(message: string, readonly status: number) {
     super(message)
@@ -43,7 +46,7 @@ export class ApiError extends Error {
 }
 
 async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const res = await fetch(path, {
+  const res = await fetch(apiUrl(path), {
     method,
     headers: { "content-type": "application/json", "x-telegram-init-data": tg?.initData ?? "" },
     body: body === undefined ? undefined : JSON.stringify(body),
