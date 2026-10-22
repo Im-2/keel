@@ -1,1 +1,7 @@
-{ "keel": null }
+{
+  "chainId": 31611,
+  "keel": {
+    "guardianFactory": "0x44AA5CBb78eA506Fd91FA7942d9326De29bF2E49",
+    "pay": "0xa0C53049202A655f5Ca5fE3131971C1B79cBEe29"
+  }
+}
