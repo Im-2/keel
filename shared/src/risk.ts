@@ -64,6 +64,8 @@ export interface BorrowQuote {
   annualInterest: bigint
   risk: RiskLevel
   warnings: string[]
+  /** True when Mezo would reject this loan (under the minimum debt, under 110%, or under 150% in Recovery Mode). */
+  blocking: boolean
 }
 
 export function quoteBorrow(i: BorrowQuoteInput): BorrowQuote {
@@ -94,6 +96,7 @@ export function quoteBorrow(i: BorrowQuoteInput): BorrowQuote {
     annualInterest: (totalDebt * BigInt(i.interestRateBps)) / BPS,
     risk: riskLevel(icr),
     warnings,
+    blocking: netDebt < i.minNetDebt || icr < MCR || (!!i.recoveryMode && icr < CCR),
   }
 }
 

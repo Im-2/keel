@@ -105,7 +105,7 @@ function BorrowForm() {
           <p className="muted small">After this you'll have about {fmtBtc(btc - q.collateral, 4)} left. Keep ~{fmtBtc(SUGGESTED_RESERVE, 3)} for your guardian reserve.</p>
         )}
         {err && <Notice tone="danger">{err}</Notice>}
-        <Button busy={busy} disabled={short || q.warnings.some((w) => /Minimum|below the 110/.test(w))} onClick={() => submit({ type: "borrow", amount: toBig(amt).toString(), targetIcr: pct(ratio).toString() })}>Review & sign</Button>
+        <Button busy={busy} disabled={short || q.blocking} onClick={() => submit({ type: "borrow", amount: toBig(amt).toString(), targetIcr: pct(ratio).toString() })}>Review & sign</Button>
       </Glass>
     </>
   )

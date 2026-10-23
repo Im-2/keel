@@ -146,7 +146,7 @@ export function createBot(deps: Deps, bot = new Bot(deps.config.botToken)): Bot 
       const balance = await chain.balance(address)
       const need = q.collateral + GAS_BUFFER
       const short = balance < need
-      const blocked = short || q.warnings.some((w) => /Minimum|below the 110/.test(w))
+      const blocked = short || q.blocking
       let text = borrowCard(q, sys, amount) + (a.icr ? "" : "\n\n<i>Tip: a higher ratio is safer, e.g. <code>/borrow 1800 200</code> (needs more BTC).</i>")
       text += short
         ? `\n\n🪙 <b>Not enough BTC in your wallet.</b> You need about <b>${fmtBtc(need, 4)}</b> (${fmtBtc(q.collateral, 4)} collateral + ${fmtBtc(GAS_BUFFER, 3)} for fees); your wallet has ${fmtBtc(balance, 4)}. Get testnet BTC from the Mezo faucet, or try a lower amount or ratio.`

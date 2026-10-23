@@ -144,3 +144,25 @@ describe("small wallets (0.05 BTC faucet)", () => {
     expect(String(h.last()!.payload.text)).toContain("keeper will top you up")
   })
 })
+
+describe("borrow guardrails from Mezo's rules", () => {
+  it("in Recovery Mode a loan under 150% gets no sign button", async () => {
+    const h = harness()
+    h.store.upsertUser(42, "ada", "Ada")
+    h.store.setAddress(42, ADA)
+    h.chain.sysState = { ...h.chain.sysState, recoveryMode: true }
+    await h.say("/borrow 1800 140")
+    expect(String(h.last()!.payload.text)).toContain("Recovery Mode")
+    expect(buttonUrls(h.last()!.payload)).toHaveLength(0)
+    await h.say("/borrow 1800 160")
+    expect(buttonUrls(h.last()!.payload)[0]).toContain("/#/i/")
+  })
+  it("under the 1,800 MUSD minimum gets no sign button", async () => {
+    const h = harness()
+    h.store.upsertUser(42, "ada", "Ada")
+    h.store.setAddress(42, ADA)
+    await h.say("/borrow 500")
+    expect(String(h.last()!.payload.text)).toContain("Minimum borrow")
+    expect(buttonUrls(h.last()!.payload)).toHaveLength(0)
+  })
+})

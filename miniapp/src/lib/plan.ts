@@ -126,7 +126,7 @@ export async function buildPlan(intent: IntentDto, ctx: Ctx, input: { amount?: s
       plan.warnings = [...q.warnings]
       const needBtc = q.collateral + GAS_BUFFER
       if (balance < needBtc) plan.warnings.push(`Not enough BTC: you need about ${fmtBtc(needBtc, 4)} (${fmtBtc(q.collateral, 4)} collateral + ${fmtBtc(GAS_BUFFER, 3)} for fees) but your wallet has ${fmtBtc(balance, 4)}. Get testnet BTC from the Mezo faucet or borrow less.`)
-      plan.blocked = q.warnings.some((w) => /Minimum|below the 110/.test(w)) || balance < needBtc
+      plan.blocked = q.blocking || balance < needBtc
       if (needGuardian) plan.steps.push(createGuardian)
       plan.steps.push({
         label: "Open loan",
