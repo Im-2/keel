@@ -6,6 +6,12 @@
 
 Built for the Mezo Buildathon, Track 2 (access / distribution).
 
+## Live
+
+- Bot: https://t.me/KeelMezoBot · Mini App: https://keel-miniapp.vercel.app
+- Backend (always on, Render free + Turso + cron-job.org): https://keel-bot.onrender.com · status: https://keel-bot.onrender.com/status
+- How it's deployed: [docs/DEPLOY.md](docs/DEPLOY.md) · Audit with testnet evidence: [docs/STATUS.md](docs/STATUS.md)
+
 ## The problem
 
 Bitcoin holders want dollars without selling. Mezo's MUSD gives them an interest-fixed loan against BTC, but the experience is a DeFi dashboard: pick a ratio, manage hints, watch a price, and hope you are not liquidated or redeemed while you sleep. Most people (and most of Telegram's 1B users) never get past that.
@@ -100,7 +106,7 @@ cp bot/.env.example bot/.env          # BOT_TOKEN, BOT_USERNAME, MINIAPP_URL, KE
 cp miniapp/.env.example miniapp/.env  # VITE_WC_PROJECT_ID
 pnpm --filter @keel/miniapp build     # the bot serves miniapp/dist
 pnpm --filter @keel/bot start         # API + bot + alerts + keeper on :8787
-# expose :8787 over HTTPS (any tunnel) and set MINIAPP_URL to that URL
+# local only; production runs on Render + Vercel: see docs/DEPLOY.md
 ```
 
 **Hosting the Mini App:** the Vercel project builds from this repo on every push to `main` using the root `vercel.json` (install `@keel/miniapp` only, build, serve `miniapp/dist`, rewrite every path to `index.html`). Set `VITE_API_BASE` (the bot's public URL) and `VITE_WC_PROJECT_ID` in the Vercel project's environment. Always point Telegram at the production alias, never a per-deployment URL; the bot sets its menu button to `MINIAPP_URL` on start.

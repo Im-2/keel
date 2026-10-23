@@ -54,7 +54,7 @@ Explorer links: `https://explorer.test.mezo.org/tx/<hash>`.
 
 ## 4. Known limits
 
-- **Hosting:** the bot, keeper and API run on one Windows machine behind a Cloudflare quick tunnel. The tunnel died once overnight. When it restarts its URL changes, and `VITE_API_BASE` must be updated in Vercel followed by a push. A permanent host or named tunnel is needed for a reliable demo.
+- **Hosting (updated):** the backend now runs 24/7 on Render (free plan) with its data in Turso and a cron-job.org schedule, independent of any laptop. See [DEPLOY.md](DEPLOY.md). The free host sleeps if the schedule ever stops, which delays the first reply by about 1 minute.
 - **Demo wallet funds:** it holds only ~0.0033 BTC, so it can't open another loan. Your wallet holds 0.05 BTC and no loan yet.
 - **x402 facilitator hash lookup:** the hash it returns can't be looked up with `eth_getTransactionByHash` on the public RPC, but it is on chain and visible on the explorer.
 - **Recovery Mode:** can only be demonstrated locally.
