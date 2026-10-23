@@ -1,0 +1,42 @@
+# Keel backend on Render's free plan: Telegram bot (webhooks), API, keeper, alerts, claim relayer.
+# Secrets are set in the Render dashboard / API as environment variables, never in git (sync: false).
+services:
+  - type: web
+    name: keel-bot
+    runtime: node
+    plan: free
+    region: frankfurt
+    branch: main
+    buildCommand: npm install -g pnpm@10.28.0 && pnpm install --frozen-lockfile --filter @keel/bot...
+    startCommand: pnpm --filter @keel/bot start
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "24"
+      - key: NETWORK
+        value: testnet
+      - key: DB_PATH
+        value: /tmp/keel.sqlite
+      - key: POLL_MS
+        value: "30000"
+      - key: MINIAPP_URL
+        value: https://keel-miniapp.vercel.app
+      - key: BOT_USERNAME
+        value: KeelMezoBot
+      - key: PUBLIC_URL # this service's own https://<name>.onrender.com URL (enables webhooks)
+        sync: false
+      - key: BOT_TOKEN
+        sync: false
+      - key: KEEPER_PRIVATE_KEY # small-balance keeper + claim relayer key, NOT the deployer key
+        sync: false
+      - key: TURSO_DATABASE_URL
+        sync: false
+      - key: TURSO_AUTH_TOKEN
+        sync: false
+      - key: CRON_SECRET
+        sync: false
+      - key: ADMIN_IDS
+        sync: false
+      - key: PREMIUM_PAY_TO
+        sync: false
