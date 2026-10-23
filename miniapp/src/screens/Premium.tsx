@@ -34,7 +34,13 @@ export function Premium({ ctx }: { ctx: AppCtx }) {
     try {
       const signer = toClientEvmSigner({ address: account, signTypedData: (m: never) => wallet.signTypedData({ account, ...(m as object) } as never) } as never, ctx.pub as PublicClient)
       const client = new x402Client().register(`eip155:${ctx.cfg.chainId}`, new ExactEvmScheme(signer))
-      const res = await wrapFetchWithPayment((u: RequestInfo | URL, i?: RequestInit) => authed(String(u), i), client)("/api/premium/subscribe", { method: "POST", body: "{}" })
+      // the x402 client retries with a Request object carrying the payment header: keep its headers, add ours
+      const withAuth = (input: RequestInfo | URL, init?: RequestInit) => {
+        const r = new Request(input, init)
+        for (const [k, v] of Object.entries(authHeaders())) r.headers.set(k, v)
+        return fetch(r)
+      }
+      const res = await wrapFetchWithPayment(withAuth, client)(apiUrl("/api/premium/subscribe"), { method: "POST", body: "{}" })
       if (!res.ok) throw new Error(((await res.json().catch(() => ({}))) as { error?: string }).error ?? `Payment failed (${res.status})`)
       haptic("success")
       setDone(true)

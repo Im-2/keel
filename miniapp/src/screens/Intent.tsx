@@ -63,6 +63,8 @@ function Review({ ctx, intent, account, wallet }: { ctx: AppCtx; intent: IntentD
         setStepIdx(i)
         last = await plan.steps[i].run(wallet, { pub: ctx.pub, deployment: ctx.deployment, account })
         await ctx.pub.waitForTransactionReceipt({ hash: last })
+        // public RPC nodes lag each other by a few seconds: let the next step see this one (e.g. approve -> create)
+        if (i < plan.steps.length - 1) await new Promise((r) => setTimeout(r, 3000))
       }
       setStepIdx(-1)
       await api.complete(intent.id, { status: "done", txHash: last }).catch(() => undefined)

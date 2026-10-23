@@ -34,8 +34,11 @@ export class LiveClaimRelayer implements ClaimRelayer {
 
   async claim(link: Address, to: Address, signature: Hex): Promise<Hex> {
     // simulating first surfaces BadSignature / Expired / LinkSettled without spending gas
-    const { request } = await this.chain.client.simulateContract({ address: this.pay, abi: keelPayAbi, functionName: "claim", args: [link, to, signature], account: this.wallet.account })
-    const hash = await this.wallet.writeContract(request)
+    const call = { address: this.pay, abi: keelPayAbi, functionName: "claim", args: [link, to, signature], account: this.wallet.account } as const
+    const { request } = await this.chain.client.simulateContract(call)
+    const est = ((await this.chain.client.estimateContractGas(call)) * 3n) / 2n // same margin as the keeper
+    const gas = est > 150_000n ? est : 150_000n // floor: a lagging node may price the reverted path
+    const hash = await this.wallet.writeContract({ ...request, gas })
     const rc = await this.chain.client.waitForTransactionReceipt({ hash })
     if (rc.status !== "success") throw new Error("claim reverted")
     return hash

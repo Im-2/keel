@@ -52,6 +52,7 @@ describe("chat: money actions are echoed back before any intent exists", () => {
 
   it("Cancel creates nothing, and a confirmation can only be used once", async () => {
     const h = linked()
+    h.chain.setView(ADA, { trove: trove(pct(180)) }) // 40,000 MUSD debt: room to repay
     await h.say("repay 100")
     const echo = h.last()!.payload
     await h.tap(cb(echo, "nl:no:")!)
@@ -67,6 +68,7 @@ describe("chat: money actions are echoed back before any intent exists", () => {
 
   it("someone else cannot press your confirm button", async () => {
     const h = linked()
+    h.chain.setView(ADA, { trove: trove(pct(180)) })
     h.store.upsertUser(7, "bob", "Bob")
     h.store.setAddress(7, BOB)
     await h.say("repay 100")
@@ -74,12 +76,24 @@ describe("chat: money actions are echoed back before any intent exists", () => {
     expect(intentCount(h)).toBe(0)
   })
 
-  it("repay everything uses the real debt minus the 200 MUSD gas reserve", async () => {
+  it("repay everything closes the loan (Mezo never lets an open loan go under the minimum)", async () => {
     const h = linked()
     h.chain.setView(ADA, { trove: trove(pct(180), { debt: 2001n * E18 }) })
     await h.say("repay everything")
+    expect(text(h.last()!.payload)).toContain("close your loan")
     await h.tap(cb(h.last()!.payload, "nl:ok:")!)
-    expect(intentOf(h, h.last()!.payload)!.params.amount).toBe((1801n * E18).toString())
+    expect(text(h.last()!.payload)).toContain("1,801 MUSD")
+    expect(intentOf(h, h.last()!.payload)!.type).toBe("close")
+  })
+
+  it("a partial repay that would break the 1,800 MUSD minimum is refused with the real maximum", async () => {
+    const h = linked()
+    h.chain.setView(ADA, { trove: trove(pct(180), { debt: 2500n * E18 }) })
+    await h.say("/repay 600")
+    expect(text(h.last()!.payload)).toContain("at most <b>500 MUSD</b>")
+    expect(intentCount(h)).toBe(0)
+    await h.say("/repay 500")
+    expect(intentOf(h, h.last()!.payload)!.type).toBe("repay")
   })
 })
 

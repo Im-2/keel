@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { GAS_BUFFER, SUGGESTED_RESERVE, computeIcr, liquidationPrice, musdAbi, pct, quoteBorrow } from "@keel/shared"
+import { GAS_BUFFER, SUGGESTED_RESERVE, closeCost, maxPartialRepay, computeIcr, liquidationPrice, musdAbi, pct, quoteBorrow } from "@keel/shared"
 import { startIntent, usePosition } from "../lib/data"
 import { big, fmtBtc, fmtIcr, fmtMusd, fmtUsd, num, toBig, E18 } from "../lib/units"
 import { Header } from "../ui/shell"
@@ -121,7 +121,8 @@ function RepayForm({ ctx }: { ctx: AppCtx }) {
     queryKey: ["musd", p.address],
     queryFn: () => ctx.pub.readContract({ address: ctx.deployment.musd.musd, abi: musdAbi, functionName: "balanceOf", args: [p.address!] }),
   })
-  const maxRepay = debt > 200n * E18 ? debt - 200n * E18 : 0n
+  // Mezo keeps an open loan at or above the minimum net debt; paying off more means closing it
+  const maxRepay = maxPartialRepay(debt, big(p.system!.minNetDebt))
   const cap = musd.data !== undefined && musd.data < maxRepay ? musd.data : maxRepay
   const [v, setV] = useState(0)
   const amount = toBig(Math.min(v, num(cap)))
@@ -139,10 +140,11 @@ function RepayForm({ ctx }: { ctx: AppCtx }) {
         ["Ratio", `${fmtIcr(big(t.icr))} → ${fmtIcr(computeIcr(coll, newDebt, price))}`],
         ["Liquidation price", `${fmtUsd(big(t.liqPrice), 0)} → ${fmtUsd(liquidationPrice(coll, newDebt), 0)}`],
       ]} />
-      <p className="muted small">The last 200 MUSD is a gas reserve that is returned when you close the loan.</p>
+      <p className="muted small">{maxRepay === 0n ? `Your loan is at Mezo's ${fmtMusd(big(p.system!.minNetDebt), 0)} minimum, so it can only be paid off by closing it.` : `You can repay up to ${fmtMusd(maxRepay, 2)} and keep the loan open (Mezo's minimum is ${fmtMusd(big(p.system!.minNetDebt), 0)}).`}</p>
       {musd.data === 0n && <Notice>Your wallet has no MUSD to repay with.</Notice>}
       {err && <Notice tone="danger">{err}</Notice>}
       <Button busy={busy} disabled={amount === 0n} onClick={() => submit({ type: "repay", amount: amount.toString() })}>Review & sign</Button>
+      <Button variant="ghost" disabled={busy} onClick={() => submit({ type: "close" })}>Close loan · pay {fmtMusd(closeCost(debt), 2)}, get {fmtBtc(coll, 5)} back</Button>
     </Glass>
   )
 }

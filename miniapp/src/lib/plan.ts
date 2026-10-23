@@ -1,7 +1,7 @@
 import { type Address, type Hex, type PublicClient, type WalletClient } from "viem"
 import {
   E18, GAS_BUFFER, collateralToTarget, computeIcr, fmtBtc, fmtIcr, fmtMusd, fmtUsd, hintHelpersAbi, keelGuardianAbi, keelGuardianFactoryAbi, keelPayAbi,
-  liquidationPrice, musdAbi, parseUnits18, quoteBorrow, readGuardian, readSystem, readTrove, sortedTrovesAbi, findGuardian,
+  liquidationPrice, maxPartialRepay, closeCost, musdAbi, parseUnits18, quoteBorrow, readGuardian, readSystem, readTrove, sortedTrovesAbi, findGuardian,
   type Deployment,
 } from "@keel/shared"
 import type { IntentDto } from "./api"
@@ -45,8 +45,29 @@ export async function hintsFor(ctx: Ctx, coll: bigint, debt: bigint): Promise<[A
   return [upper, lower]
 }
 
-const write = (w: WalletClient, ctx: Ctx, req: { address: Address; abi: readonly unknown[]; functionName: string; args?: readonly unknown[]; value?: bigint }) =>
-  w.writeContract({ ...req, account: ctx.account, chain: w.chain } as never)
+/**
+ * Every transaction carries its own gas limit. Mezo's public RPC can estimate cheap calls below the EIP-7623
+ * calldata floor it then enforces (seen on testnet for an approve), and protocol calls that search hints
+ * on-chain vary between estimate and execution. 30% + 5k covers both; unused gas is not charged.
+ */
+async function write(w: WalletClient, ctx: Ctx, req: { address: Address; abi: readonly unknown[]; functionName: string; args?: readonly unknown[]; value?: bigint }) {
+  const call = { ...req, account: ctx.account } as never
+  // A node that hasn't seen the previous step yet (approve -> create) simulates a revert and prices it cheaply,
+  // which then runs out of gas on-chain. Wait for the call to simulate cleanly before estimating.
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await ctx.pub.simulateContract(call)
+      break
+    } catch (e) {
+      if (attempt >= 5) throw e
+      await new Promise((r) => setTimeout(r, 2000))
+    }
+  }
+  const est = await ctx.pub.estimateContractGas(call)
+  // a lagging node can also return the (cheap) gas of a reverted path without an error: never go below 150k
+  const gas = (est * 13n) / 10n + 5_000n
+  return w.writeContract({ ...req, account: ctx.account, chain: w.chain, gas: gas > 150_000n ? gas : 150_000n } as never)
+}
 
 async function allowanceOk(ctx: Ctx, spender: Address, amount: bigint) {
   const a = await ctx.pub.readContract({ address: ctx.deployment.musd.musd, abi: musdAbi, functionName: "allowance", args: [ctx.account, spender] })
@@ -143,8 +164,9 @@ export async function buildPlan(intent: IntentDto, ctx: Ctx, input: { amount?: s
       plan.title = "Repay"
       const amount = decimalAmount()
       if (!trove?.active) return { ...plan, blocked: true, warnings: ["You don't have an open loan."] }
-      const maxRepay = trove.debt > 200n * E18 ? trove.debt - 200n * E18 : 0n
-      if (amount > maxRepay) plan.warnings.push(`You can repay up to ${fmtMusd(maxRepay, 2)} (the 200 MUSD gas reserve stays until you close the loan).`)
+      // Mezo keeps at least the minimum net debt on an open loan; anything beyond that means closing it
+      const maxRepay = maxPartialRepay(trove.debt, sys.minNetDebt)
+      if (amount > maxRepay) plan.warnings.push(maxRepay === 0n ? `Your loan is at the ${fmtMusd(sys.minNetDebt, 0)} minimum, so it can't be partly repaid. Close the loan to pay it off.` : `You can repay up to ${fmtMusd(maxRepay, 2)} and keep the loan open (Mezo's minimum is ${fmtMusd(sys.minNetDebt, 0)}). To pay off everything, close the loan.`)
       const debt = trove.debt - amount
       plan.rows = [
         ["Repaying", fmtMusd(amount, 2)],
@@ -164,6 +186,26 @@ export async function buildPlan(intent: IntentDto, ctx: Ctx, input: { amount?: s
           return write(w, c, { address: guardianTarget, abi: keelGuardianAbi, functionName: "repay", args: [amount, u, l] })
         },
       })
+      return plan
+    }
+    case "close": {
+      plan.title = "Close loan"
+      if (!trove?.active) return { ...plan, blocked: true, warnings: ["You don't have an open loan."] }
+      const g = await readGuardian(ctx.pub, guardianTarget)
+      const need = closeCost(trove.debt)
+      // the guardian spends its own MUSD reserve first and pulls only the shortfall from you
+      const pull = need > g.reserveMUSD ? need - g.reserveMUSD : 0n
+      const bal = await ctx.pub.readContract({ address: m.musd, abi: musdAbi, functionName: "balanceOf", args: [ctx.account] })
+      plan.rows = [
+        ["You pay", fmtMusd(pull, 2)],
+        ["Debt cleared", fmtMusd(trove.debt, 2) + " (incl. 200 MUSD gas reserve, settled by the protocol)"],
+        ["You get back", `${fmtBtc(trove.coll, 5)} collateral${g.reserveBTC > 0n ? ` + ${fmtBtc(g.reserveBTC, 5)} reserve` : ""}`],
+        ["Fee", "none"],
+      ]
+      if (bal < pull) plan.warnings.push(`You need ${fmtMusd(pull, 2)} but your wallet has ${fmtMusd(bal, 2)}. Interest and the 0.1% fee mean you owe a little more than you borrowed: get ${fmtMusd(pull - bal, 2)} more first.`)
+      plan.blocked = bal < pull
+      if (pull > 0n && !(await allowanceOk(ctx, guardianTarget, pull))) plan.steps.push(approveStep(guardianTarget, pull))
+      plan.steps.push({ label: "Close loan", run: (w, c) => write(w, c, { address: guardianTarget, abi: keelGuardianAbi, functionName: "closeTrove" }) })
       return plan
     }
     case "fund_reserve": {

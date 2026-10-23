@@ -155,3 +155,15 @@ export const RISK_EMOJI: Record<RiskLevel, string> = {
   critical: "🔴",
   liquidatable: "☠️",
 }
+
+/**
+ * Largest partial repayment Mezo accepts: BorrowerOperations requires the remaining net debt (debt minus the
+ * 200 MUSD gas compensation) to stay at or above `minNetDebt`. Paying off more than this means closing the loan.
+ */
+export const maxPartialRepay = (debt: bigint, minNetDebt: bigint): bigint => {
+  const m = debt - GAS_COMP - minNetDebt
+  return m > 0n ? m : 0n
+}
+
+/** MUSD needed to close a loan: everything except the gas compensation, which the protocol burns from its pool. */
+export const closeCost = (debt: bigint): bigint => (debt > GAS_COMP ? debt - GAS_COMP : 0n)

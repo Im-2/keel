@@ -1,6 +1,6 @@
 import { Bot, InlineKeyboard, type Context } from "grammy"
 import {
-  E18, DEFAULT_BORROW, DEFAULT_BORROW_ICR, GAS_BUFFER, GAS_COMP, SUGGESTED_RESERVE, explorerTx, fmtBtc, fmtIcr, fmtMusd, pct, quoteBorrow, riskLevel, RISK_EMOJI, parseUnits18,
+  E18, DEFAULT_BORROW, DEFAULT_BORROW_ICR, GAS_BUFFER, SUGGESTED_RESERVE, closeCost, maxPartialRepay, explorerTx, fmtBtc, fmtIcr, fmtMusd, pct, quoteBorrow, riskLevel, RISK_EMOJI, parseUnits18,
 } from "@keel/shared"
 import type { Config } from "./config"
 import type { Store, UserRow, IntentRow, IntentType } from "./db"
@@ -24,6 +24,8 @@ export interface Actions {
   position(ctx: Context, user: UserRow, edit?: boolean): Promise<void>
   borrow(ctx: Context, user: UserRow, a: { amount?: bigint; icr?: bigint }): Promise<void>
   repay(ctx: Context, user: UserRow, a: { amount?: bigint; all?: boolean }): Promise<void>
+  close(ctx: Context, user: UserRow): Promise<void>
+  close(ctx: Context, user: UserRow): Promise<void>
   addCollateral(ctx: Context, user: UserRow, a: { amount: bigint }): Promise<void>
   fund(ctx: Context, user: UserRow, a: { amount: bigint }): Promise<void>
   protectMenu(ctx: Context, user: UserRow): Promise<void>
@@ -157,18 +159,34 @@ export function createBot(deps: Deps, bot = new Bot(deps.config.botToken)): Bot 
     async repay(ctx, user, a) {
       const address = await actions.needWallet(ctx, user)
       if (!address) return
-      let amount = a.amount
-      if (a.all) {
-        const view = await chain.view(address)
-        if (!view.trove) throw new UserError("You don't have an open loan to repay.")
-        // the last 200 MUSD is the gas reserve, returned when the loan is closed
-        amount = view.trove.debt > GAS_COMP ? view.trove.debt - GAS_COMP : 0n
-        if (amount === 0n) throw new UserError("Only the 200 MUSD gas reserve is left on your loan.")
-      }
+      // paying everything off is closing the loan: Mezo never lets an open loan drop under the minimum net debt
+      if (a.all) return actions.close(ctx, user)
+      const amount = a.amount
       if (!amount) throw new UserError("Please include a repay amount (in MUSD), e.g. 25")
+      const [view, sys] = await Promise.all([chain.view(address), chain.system()])
+      if (!view.trove) throw new UserError("You don't have an open loan to repay.")
+      const max = maxPartialRepay(view.trove.debt, sys.minNetDebt)
+      if (amount > max) {
+        const why = max === 0n
+          ? `Your loan is at Mezo's ${fmtMusd(sys.minNetDebt, 0)} minimum, so it can't be partly repaid.`
+          : `You can repay at most <b>${fmtMusd(max, 2)}</b> and keep the loan open (Mezo's minimum is ${fmtMusd(sys.minNetDebt, 0)}).`
+        return void (await ctx.reply(`${why} To pay off everything, close the loan.`, { parse_mode: "HTML", reply_markup: new InlineKeyboard().text("Close my loan", "cb:close") }))
+      }
       const i = intent(ctx, "repay", { amount: amount.toString() })
-      const note = a.all ? "\n<i>That's everything except the 200 MUSD gas reserve, which comes back when the loan closes.</i>" : ""
-      await ctx.reply(`Repay <b>${fmtMusd(amount)}</b> of your loan.${note}`, { parse_mode: "HTML", reply_markup: signButton("✍️ Review & sign", `/i/${i.id}`) })
+      await ctx.reply(`Repay <b>${fmtMusd(amount)}</b> of your loan.`, { parse_mode: "HTML", reply_markup: signButton("✍️ Review & sign", `/i/${i.id}`) })
+    },
+
+    async close(ctx, user) {
+      const address = await actions.needWallet(ctx, user)
+      if (!address) return
+      const view = await chain.view(address)
+      if (!view.trove) throw new UserError("You don't have an open loan.")
+      if (view.kind !== "guardian") throw new UserError("This loan isn't held by a Keel guardian, so close it where you opened it.")
+      const i = intent(ctx, "close", {})
+      await ctx.reply(
+        `Close your loan: pay about <b>${fmtMusd(closeCost(view.trove.debt), 2)}</b> and get your <b>${fmtBtc(view.trove.coll, 5)}</b> collateral back, plus whatever is in your guardian's reserve.\n<i>You owe a little more than you borrowed (the 0.1% fee and interest), so make sure your wallet has enough MUSD.</i>`,
+        { parse_mode: "HTML", reply_markup: signButton("✍️ Review & sign", `/i/${i.id}`) },
+      )
     },
 
     async addCollateral(ctx, user, a) {
@@ -323,6 +341,11 @@ export function createBot(deps: Deps, bot = new Bot(deps.config.botToken)): Bot 
     if (!(await actions.needWallet(ctx, user))) return
     await actions.protect(ctx, user, { min: parsePercent(a, 130), target: parsePercent(b, 150) })
   }))
+  bot.command("close", handler((ctx, user) => actions.close(ctx, user)))
+  bot.callbackQuery("cb:close", async (ctx) => {
+    await ctx.answerCallbackQuery()
+    await handler((c, u) => actions.close(c, u))(ctx)
+  })
   bot.callbackQuery("cb:protect", async (ctx) => {
     await ctx.answerCallbackQuery()
     await handler((c, u) => actions.protectMenu(c, u))(ctx)

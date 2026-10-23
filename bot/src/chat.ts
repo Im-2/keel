@@ -158,7 +158,7 @@ export function mountChat(bot: Bot, d: ChatDeps) {
         text = `Borrow <b>${fmtMusd(a!)}</b> at a <b>${r[0] ? r[0] + "%" : "160%"}</b> collateral ratio?\nNext I'll show the full quote: BTC locked, fee, interest and liquidation price.`
         break
       case "repay":
-        text = slots.all ? "Repay <b>everything</b> you owe (except the 200 MUSD gas reserve)?" : `Repay <b>${fmtMusd(a!)}</b> of your loan?`
+        text = slots.all ? "Pay off <b>everything</b> and close your loan? You get your BTC collateral back." : `Repay <b>${fmtMusd(a!)}</b> of your loan?`
         break
       case "add_collateral":
         text = `Add <b>${fmtBtc(a!)}</b> to your loan as collateral?`

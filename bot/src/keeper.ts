@@ -40,10 +40,13 @@ export class LiveKeeperBackend implements KeeperBackend {
   }
 
   async protect(guardian: Address): Promise<Hex> {
-    const { request } = await this.chain.client.simulateContract({
-      address: guardian, abi: keelGuardianAbi, functionName: "protect", args: [ZERO, ZERO], account: this.wallet.account!,
-    })
-    const hash = await this.wallet.writeContract(request)
+    const call = { address: guardian, abi: keelGuardianAbi, functionName: "protect", args: [ZERO, ZERO], account: this.wallet.account! } as const
+    const { request } = await this.chain.client.simulateContract(call)
+    // protect() searches sorted-trove hints on-chain, whose cost varies between estimate and execution, and the
+    // 63/64 gas rule starves the inner call near the limit: two testnet attempts ran out of gas at 97% used.
+    const est = ((await this.chain.client.estimateContractGas(call)) * 3n) / 2n
+    const gas = est > 1_200_000n ? est : 1_200_000n // floor: a lagging node may price the reverted path
+    const hash = await this.wallet.writeContract({ ...request, gas })
     const rc = await this.chain.client.waitForTransactionReceipt({ hash })
     if (rc.status !== "success") throw new Error(`protect reverted: ${hash}`)
     return hash

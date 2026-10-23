@@ -242,7 +242,7 @@ describe("mini app routes", () => {
     const ok = (await (await req("POST", "/api/intent", { type: "borrow", amount: (1800n * E18).toString(), targetIcr: pct(160).toString(), evil: "x" })).json()) as { id: string; params: Record<string, unknown> }
     expect(store.getIntent(ok.id)!.params).toEqual({ amount: (1800n * E18).toString(), targetIcr: pct(160).toString() })
     expect((await req("POST", "/api/intent", { type: "borrow", amount: "1", targetIcr: pct(105).toString() })).status).toBe(400)
-    expect((await req("POST", "/api/intent", { type: "close" })).status).toBe(400)
+    expect((await req("POST", "/api/intent", { type: "withdraw_reserve" })).status).toBe(400)
     const miss = await req("POST", "/api/intent", { type: "send", to: "@nobody", amount: "5" })
     expect(miss.status).toBe(404)
     store.upsertUser(7, "bob", "Bob")
@@ -298,5 +298,50 @@ describe("wallet-browser handoff", () => {
     const old = store.createHandoff(42, "intent", other.id, -1)
     expect((await hoReq(old.token, "GET", `/api/intent/${other.id}`)).status).toBe(401)
     expect((await hoReq("forged", "GET", `/api/intent/${other.id}`)).status).toBe(401)
+  })
+})
+
+describe("alerts: one-tap protection buttons", () => {
+  const intentFromButton = (store: Store, url?: string) => (url ? store.getIntent(url.split("/i/")[1]!) : null)
+
+  it("ratio alerts carry add-collateral and repay buttons sized to reach the target, plus turn-on-protection", async () => {
+    const { store, chain, notifier, engine } = setup()
+    // 1 BTC at 100k against 80k debt = 125%: below the 130% danger line
+    chain.setView(ADA, { trove: trove(pct(125), { coll: E18, debt: 80_000n * E18, price: 100_000n * E18 }), guardian: null, guardianAddress: null, kind: "direct" })
+    await engine.tick()
+    const msg = notifier.sent[0]
+    expect(msg.text).toContain("Urgent")
+    const rows = msg.opts!.buttons!.flat()
+    expect(rows.map((b) => b.text.split(" ")[1])).toEqual(["Add", "Repay", "Turn"])
+    for (const b of rows) expect(b.webApp).toMatch(/^https:\/\/app\.example\/#\/i\//)
+    // target = warn 150% + 15 = 165%: needs 1.32 BTC total -> add 0.32 BTC; or repay down to 60,606 MUSD
+    const add = intentFromButton(store, rows[0].webApp)!
+    expect(add.type).toBe("add_collateral")
+    expect(BigInt(add.params.amount as string)).toBe(32n * 10n ** 16n)
+    const repay = intentFromButton(store, rows[1].webApp)!
+    expect(repay.type).toBe("repay")
+    expect(BigInt(repay.params.amount as string)).toBe(19_394n * E18)
+    expect(intentFromButton(store, rows[2].webApp)!.type).toBe("protect_config")
+  })
+
+  it("with protection on but an empty reserve, offers to fund the reserve", async () => {
+    const { chain, notifier, engine } = setup()
+    chain.setView(ADA, { trove: trove(pct(140), { coll: E18, debt: 71_428n * E18, price: 100_000n * E18 }), guardian: guardian({ reserveBTC: 0n }) })
+    await engine.tick()
+    expect(notifier.sent[0].text).toContain("reserve is empty")
+    expect(notifier.sent[0].opts!.buttons!.flat().some((b) => b.text.includes("Fund reserve"))).toBe(true)
+  })
+
+  it("redemption and Recovery Mode alerts also carry protect buttons", async () => {
+    const { chain, notifier, engine } = setup()
+    chain.setView(ADA, { trove: trove(pct(145), { coll: E18, debt: 68_965n * E18, price: 100_000n * E18 }), kind: "direct", guardianAddress: null, redemption: { ahead: 1_000n * E18, rank: 0, total: 9 } })
+    await engine.tick() // first tick records recovery_mode = off
+    chain.sysState = sys({ recoveryMode: true, tcr: pct(140) })
+    await engine.tick()
+    const red = notifier.sent.find((m) => m.text.includes("Redemption exposure"))!
+    expect(red.opts!.buttons!.length).toBeGreaterThan(0)
+    const rm = notifier.sent.find((m) => m.text.includes("Recovery Mode is ON"))!
+    expect(rm.text).toContain("inside the danger zone")
+    expect(rm.opts!.buttons!.flat()[0].text).toContain("Add")
   })
 })

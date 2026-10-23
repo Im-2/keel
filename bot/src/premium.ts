@@ -1,6 +1,7 @@
 import { paymentMiddleware, x402ResourceServer } from "@x402/hono"
 import { ExactEvmScheme } from "@x402/evm/exact/server"
 import { HTTPFacilitatorClient } from "@x402/core/server"
+import { declareEip2612GasSponsoringExtension } from "@x402/extensions"
 import { parseUnits } from "viem"
 import type { Hono } from "hono"
 import type { Config } from "./config"
@@ -60,12 +61,14 @@ export function mountPremium(app: Hono<any>, d: PremiumRouteDeps) {
           ],
           description: `Keel Premium alerts: ${cfg.days} days of faster liquidation and redemption monitoring`,
           mimeType: "application/json",
+          // MUSD is EIP-2612: the payer signs a permit for Permit2 instead of sending an approve transaction,
+          // and the facilitator submits it with the payment, so paying needs no BTC for gas at all.
+          extensions: { ...declareEip2612GasSponsoringExtension() },
         },
       },
       server,
-      undefined,
-      undefined,
-      false,
+      // syncFacilitatorOnStart defaults to true: the server must learn the facilitator's supported kinds
+      // (eip155:31611 / MUSD / permit2) before it can build payment requirements.
     ),
   )
   app.get("/api/premium", (c) => {

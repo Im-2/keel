@@ -2,7 +2,7 @@ import type { ReactNode } from "react"
 import type { ActivityItem } from "../lib/api"
 import { big, fmtBtc, fmtIcr, fmtMusd, timeAgo } from "../lib/units"
 import { parseUnits18 } from "@keel/shared"
-import { IconBorrow, IconCoin, IconDrop, IconGift, IconMinus, IconPlus, IconSend, IconShield } from "./icons"
+import { IconBorrow, IconCheck, IconCoin, IconDrop, IconGift, IconMinus, IconPlus, IconSend, IconShield } from "./icons"
 
 interface Described {
   icon: ReactNode
@@ -19,6 +19,7 @@ export function describe(i: ActivityItem): Described {
   const p = i.params
   switch (i.type) {
     case "borrow": return { icon: <IconBorrow />, title: "Borrowed MUSD", sub: "Loan opened", amount: `+${fmtMusd(amt(p, i.type), 0)}`, sign: "in" }
+    case "close": return { icon: <IconCheck />, title: "Loan closed", sub: "Collateral returned", amount: "", sign: "neutral" }
     case "repay": return { icon: <IconMinus />, title: "Repaid", sub: "Loan payment", amount: `−${fmtMusd(amt(p, i.type), 2)}`, sign: "out" }
     case "add_collateral": return { icon: <IconPlus />, title: "Added collateral", sub: "Ratio raised", amount: fmtBtc(amt(p, i.type), 5), sign: "neutral" }
     case "fund_reserve": return { icon: <IconDrop />, title: "Funded reserve", sub: "Guardian top-up fuel", amount: fmtBtc(amt(p, i.type), 5), sign: "neutral" }

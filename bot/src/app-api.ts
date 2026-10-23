@@ -132,6 +132,9 @@ export function mountAppRoutes(app: Hono<any>, d: AppRouteDeps) {
         if (!amount) return c.json({ error: "Enter an amount." }, 400)
         params = { amount: amount.toString() }
         break
+      case "close":
+        params = {}
+        break
       case "protect_config": {
         const minIcr = uint(b.minIcr)
         const targetIcr = uint(b.targetIcr)
