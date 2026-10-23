@@ -14,6 +14,7 @@ Bitcoin holders want dollars without selling. Mezo's MUSD gives them an interest
 
 | | |
 |---|---|
+| **Talk to it** | No commands needed: "borrow 2000 at 180%", "how safe is my loan?", "what if BTC drops 20%?", "send 20 to @ada for lunch". A deterministic rule-based parser (no LLM, no external calls) maps plain text onto the same actions as the slash commands, echoes the amount and recipient back, and asks when something is missing. |
 | **Borrow in chat** | `/borrow 5000 250` shows the exact fee, interest, ratio and liquidation price, then you sign once in your own wallet. |
 | **Guardian auto-protection** | Your loan lives in a per-user guardian contract. If your ratio falls below your trigger, *anyone* (a keeper bot) can top it up from your pre-funded reserve. The keeper can do nothing else. |
 | **Redemption-queue alerts** | Mezo redemptions hit the lowest-ratio loans first. Keel scans the queue and tells you how much MUSD sits ahead of you, plus Recovery Mode flips and ratio warnings with hysteresis (no alert spam). |

@@ -82,5 +82,10 @@ export function harness(chain = new FakeChain()) {
     } as never)
   }
   const last = () => calls.filter((c) => c.method === "sendMessage").at(-1)
-  return { bot, store, chain, calls, say, last }
+  const tap = (data: string, from = { id: 42, username: "ada", first_name: "Ada" }, chat: { id: number; type: string } = { id: 42, type: "private" }) =>
+    bot.handleUpdate({
+      update_id: ++n,
+      callback_query: { id: String(n), from: { ...from, is_bot: false }, chat_instance: "x", data, message: { message_id: 1, date: 0, chat, from: { id: 1, is_bot: true, first_name: "Keel" }, text: "" } },
+    } as never)
+  return { bot, store, chain, calls, say, tap, last }
 }

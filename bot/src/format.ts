@@ -66,6 +66,17 @@ export function helpText(): string {
   return [
     "<b>Keel</b> — borrow dollars against your Bitcoin without selling it. Non-custodial: you sign everything in your own wallet.",
     "",
+    "💬 <b>Just talk to me</b>, for example:",
+    "• <i>borrow 2000 at 180%</i> · <i>pay back 500</i> · <i>add 0.01 btc</i>",
+    "• <i>how safe is my loan?</i> · <i>when would I get liquidated?</i>",
+    "• <i>what if BTC drops 20%?</i> · <i>what does protection do?</i>",
+    "• <i>protect me at 170</i> · <i>turn off protection</i>",
+    "• <i>send 20 to @ada for lunch</i> · <i>split 90 with @ada and @bob</i>",
+    "• <i>request 30 from the group for pizza</i> · <i>mute alerts</i>",
+    "I always repeat the amount and recipient back and show the full quote before anything is signed.",
+    "",
+    "<b>Or use commands</b>",
+    "",
     "<b>Your position</b>",
     "/position — ratio, liquidation price, redemption queue",
     "/borrow <code>1800 160</code> — quote &amp; open a loan (amount, ratio%)",
@@ -82,6 +93,22 @@ export function helpText(): string {
     "/request <code>25</code> [note] · /split <code>90 @a @b</code>",
     "",
     "/link — connect your wallet · /stats — keeper network",
+  ].join("\n")
+}
+
+export function welcomeText(): string {
+  return [
+    "<b>Keel</b> — borrow dollars against your Bitcoin without selling it, with a guardian that keeps your loan safe.",
+    "",
+    "• Non-custodial: you sign everything in your own wallet",
+    "• Auto-protection against liquidation",
+    "• Alerts before redemptions reach you",
+    "• Send MUSD to anyone with a link",
+    "",
+    "💬 No commands needed. Connect your wallet, then just say things like:",
+    "<i>borrow 2000 at 180%</i> · <i>how safe is my loan?</i> · <i>what if BTC drops 20%?</i> · <i>send 20 to @ada for lunch</i>",
+    "",
+    "Built on Mezo's MUSD.",
   ].join("\n")
 }
 
