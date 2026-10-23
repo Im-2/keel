@@ -34,7 +34,7 @@ export function Sparkline({ values, tone = "gold", height = 34, width = 96 }: { 
   const pts = values.map((v, i) => [(i / (values.length - 1)) * width, height - 3 - ((v - min) / span) * (height - 6)] as const)
   const d = pts.map(([x, y], i) => `${i ? "L" : "M"}${x.toFixed(1)} ${y.toFixed(1)}`).join(" ")
   // black/red/white palette: neutral trends in white, adverse ones in red
-  const color = tone === "red" ? "var(--red-bright)" : "#ffffff"
+  const color = tone === "red" ? "var(--red)" : "#111111"
   return (
     <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="spark" aria-hidden>
       <defs>
@@ -62,7 +62,8 @@ export function Gauge({ icr, size = 210, label = "Safety ratio" }: { icr: number
   const r = size / 2 - 14
   const len = Math.PI * r
   const tone: Tone = icr >= 150 ? "safe" : icr >= 125 ? "warn" : "danger"
-  const color = tone === "safe" ? "#ffffff" : tone === "warn" ? "var(--red-bright)" : "var(--red)"
+  // light theme: safe is a neutral black arc; red is reserved for watch / at risk (always with a label and icon)
+  const color = tone === "safe" ? "#111111" : "var(--red)"
   const cx = size / 2
   const cy = size / 2
   const angle = Math.PI * (1 - frac)
@@ -72,7 +73,7 @@ export function Gauge({ icr, size = 210, label = "Safety ratio" }: { icr: number
   return (
     <div className={`gauge gauge-${tone}`} style={{ width: size, height: size / 2 + 26 }} role="meter" aria-valuenow={Math.round(icr)} aria-valuemin={110} aria-valuemax={250} aria-label={label}>
       <svg width={size} height={size / 2 + 8} viewBox={`0 0 ${size} ${size / 2 + 8}`}>
-        <path d={`M${cx - r} ${cy} A${r} ${r} 0 0 1 ${cx + r} ${cy}`} stroke="rgba(255,255,255,.08)" strokeWidth="12" fill="none" strokeLinecap="round" />
+        <path d={`M${cx - r} ${cy} A${r} ${r} 0 0 1 ${cx + r} ${cy}`} stroke="rgba(0,0,0,.08)" strokeWidth="12" fill="none" strokeLinecap="round" />
         <path
           d={`M${cx - r} ${cy} A${r} ${r} 0 0 1 ${cx + r} ${cy}`}
           stroke={color}
@@ -83,13 +84,13 @@ export function Gauge({ icr, size = 210, label = "Safety ratio" }: { icr: number
           strokeDashoffset={len * (1 - frac)}
           className="gauge-arc"
         />
-        <line x1={cx + (r - 10) * Math.cos(ccr)} y1={cy - (r - 10) * Math.sin(ccr)} x2={cx + (r + 10) * Math.cos(ccr)} y2={cy - (r + 10) * Math.sin(ccr)} stroke="rgba(255,255,255,.35)" strokeWidth="2" />
-        <circle cx={kx} cy={ky} r="7" fill="#000" stroke={color} strokeWidth="3" className="gauge-knob" />
+        <line x1={cx + (r - 10) * Math.cos(ccr)} y1={cy - (r - 10) * Math.sin(ccr)} x2={cx + (r + 10) * Math.cos(ccr)} y2={cy - (r + 10) * Math.sin(ccr)} stroke="rgba(0,0,0,.35)" strokeWidth="2" />
+        <circle cx={kx} cy={ky} r="7" fill="#fff" stroke={color} strokeWidth="3" className="gauge-knob" />
       </svg>
       <div className="gauge-read">
         <strong>{icr > 9999 ? "∞" : `${icr.toFixed(icr >= 1000 ? 0 : 1)}%`}</strong>
         <span>{label}</span>
-        {tone !== "safe" && <em className="gauge-status"><IconAlert size={11} />{tone === "warn" ? "Watch" : "At risk"}</em>}
+        <em className="gauge-status">{tone === "safe" ? <IconCheck size={11} /> : <IconAlert size={11} />}{tone === "safe" ? "Safe" : tone === "warn" ? "Watch" : "At risk"}</em>
       </div>
     </div>
   )

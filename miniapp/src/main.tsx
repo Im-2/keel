@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client"
 import { WagmiProvider, createConfig, http } from "wagmi"
 import { injected, walletConnect } from "wagmi/connectors"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { RainbowKitProvider, getDefaultConfig, darkTheme } from "@rainbow-me/rainbowkit"
+import { RainbowKitProvider, getDefaultConfig, lightTheme } from "@rainbow-me/rainbowkit"
 import "@rainbow-me/rainbowkit/styles.css"
 import { chainFor } from "@keel/shared"
 import { api, tg, type AppConfig } from "./lib/api"
@@ -14,9 +14,9 @@ import "./styles.css"
 tg?.ready()
 tg?.expand()
 try {
-  tg?.setHeaderColor?.("#000000")
-  tg?.setBackgroundColor?.("#000000")
-  tg?.setBottomBarColor?.("#000000")
+  tg?.setHeaderColor?.("#ffffff")
+  tg?.setBackgroundColor?.("#ffffff")
+  tg?.setBottomBarColor?.("#ffffff")
   tg?.disableVerticalSwipes?.()
 } catch {
   /* older Telegram clients */
@@ -58,7 +58,7 @@ async function boot() {
     <React.StrictMode>
       <WagmiProvider config={wagmi}>
         <QueryClientProvider client={qc}>
-          <RainbowKitProvider theme={darkTheme({ accentColor: "#E10600", accentColorForeground: "#FFFFFF", borderRadius: "large", overlayBlur: "small" })} modalSize="compact">
+          <RainbowKitProvider theme={lightTheme({ accentColor: "#E10600", accentColorForeground: "#FFFFFF", borderRadius: "large", overlayBlur: "small" })} modalSize="compact">
             <App cfg={cfg} />
           </RainbowKitProvider>
         </QueryClientProvider>
