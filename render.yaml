@@ -5,10 +5,11 @@ services:
     name: keel-bot
     runtime: node
     plan: free
-    region: frankfurt
+    region: frankfurt # nearest Render region to the Turso database in AWS eu-west-1 (Ireland); Render has no Ireland region
     branch: main
-    buildCommand: npm install -g pnpm@10.28.0 && pnpm install --frozen-lockfile --filter @keel/bot...
-    startCommand: pnpm --filter @keel/bot start
+    # Render cannot install global npm packages, so pnpm runs through npx; the start command needs no pnpm.
+    buildCommand: npx -y pnpm@10.28.0 install --frozen-lockfile --filter @keel/bot...
+    startCommand: cd bot && ./node_modules/.bin/tsx src/index.ts
     healthCheckPath: /healthz
     autoDeploy: true
     envVars:
@@ -24,8 +25,8 @@ services:
         value: https://keel-miniapp.vercel.app
       - key: BOT_USERNAME
         value: KeelMezoBot
-      - key: PUBLIC_URL # this service's own https://<name>.onrender.com URL (enables webhooks)
-        sync: false
+      - key: PUBLIC_URL # this service's own URL; enables Telegram webhooks
+        value: https://keel-bot.onrender.com
       - key: BOT_TOKEN
         sync: false
       - key: KEEPER_PRIVATE_KEY # small-balance keeper + claim relayer key, NOT the deployer key
