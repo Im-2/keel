@@ -99,6 +99,7 @@ export const api = {
   position: () => call<PositionDto>("GET", "/api/position"),
   market: () => call<{ source: string; prices: Array<[number, number]>; oracle: number }>("GET", "/api/market"),
   activity: () => call<{ items: ActivityItem[] }>("GET", "/api/activity"),
+  disconnect: () => call<{ ok: boolean; disconnected: Address | null }>("POST", "/api/disconnect", {}),
   handoff: (b: { purpose: "link" } | { purpose: "intent"; intentId: string }) => call<{ token: string; expires: number; url: string }>("POST", "/api/handoff", b),
   createIntent: (b: Record<string, unknown>) => call<IntentDto>("POST", "/api/intent", b),
   claimRelay: (b: { link: Address; to: Address; signature: string }) => call<{ txHash: string }>("POST", "/api/claim/relay", b),

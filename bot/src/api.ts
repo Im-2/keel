@@ -163,6 +163,19 @@ export function createApi(d: ApiDeps) {
     return c.json({ nonce, message: bindMessage(u.tg_id, nonce) })
   })
 
+  // Unlink the caller's own wallet (Telegram initData only: a one-time handoff link can't do this).
+  app.use("/api/disconnect", auth)
+  app.post("/api/disconnect", async (c) => {
+    const u = userOf(c)
+    const was = store.disconnect(u.tg_id)
+    if (was) {
+      await notifier.send(u.tg_id, `🔌 Wallet <code>${was.slice(0, 6)}…${was.slice(-4)}</code> disconnected. Your loan and funds stay on-chain, untouched. Connect again any time.`, {
+        buttons: [[{ text: "🔗 Connect wallet", webApp: `${config.miniappUrl}/#/link` }]],
+      })
+    }
+    return c.json({ ok: true, disconnected: was })
+  })
+
   app.post("/api/bind", async (c) => {
     const u = userOf(c)
     const body = await c.req.json().catch(() => null)

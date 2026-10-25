@@ -21,6 +21,8 @@ export interface Actions {
   start(ctx: Context, user: UserRow): Promise<void>
   help(ctx: Context): Promise<void>
   linkWallet(ctx: Context, user: UserRow): Promise<void>
+  disconnectAsk(ctx: Context, user: UserRow): Promise<void>
+  disconnect(ctx: Context, user: UserRow): Promise<void>
   position(ctx: Context, user: UserRow, edit?: boolean): Promise<void>
   borrow(ctx: Context, user: UserRow, a: { amount?: bigint; icr?: bigint }): Promise<void>
   repay(ctx: Context, user: UserRow, a: { amount?: bigint; all?: boolean }): Promise<void>
@@ -117,8 +119,31 @@ export function createBot(deps: Deps, bot = new Bot(deps.config.botToken)): Bot 
 
     async linkWallet(ctx, user) {
       if (!isPrivate(ctx)) return void (await ctx.reply("Open me privately to link a wallet 👉", { reply_markup: new InlineKeyboard().url("Open Keel", dm()) }))
-      const note = user.address ? `Currently linked: <code>${user.address}</code>\nLinking again replaces it.` : "Sign one free message to prove the wallet is yours."
-      await ctx.reply(note, { parse_mode: "HTML", reply_markup: signButton("🔗 Connect wallet", "/link") })
+      if (!user.address) return void (await ctx.reply("Sign one free message to prove the wallet is yours.", { parse_mode: "HTML", reply_markup: signButton("🔗 Connect wallet", "/link") }))
+      await ctx.reply(`Currently linked: <code>${user.address}</code>\nTo switch, connect the other wallet and sign: it replaces this one. Or disconnect.`, {
+        parse_mode: "HTML",
+        reply_markup: signButton("🔁 Switch wallet", "/link").row().text("🔌 Disconnect wallet", "cb:disconnect"),
+      })
+    },
+
+    async disconnectAsk(ctx, user) {
+      if (!user.address) return void (await ctx.reply("No wallet is connected.", { reply_markup: isPrivate(ctx) ? signButton("🔗 Connect wallet", "/link") : undefined }))
+      if (!isPrivate(ctx)) return void (await ctx.reply("Let's do that in private 👉", { reply_markup: new InlineKeyboard().url("Open Keel", dm()) }))
+      const a = user.address
+      await ctx.reply(`Disconnect <code>${a.slice(0, 6)}…${a.slice(-4)}</code>?\nYour loan and funds stay on-chain and untouched; you can reconnect any time.`, {
+        parse_mode: "HTML",
+        reply_markup: new InlineKeyboard().text("🔌 Yes, disconnect", "cb:disconnect:yes").text("Cancel", "cb:disconnect:no"),
+      })
+    },
+
+    async disconnect(ctx, user) {
+      const was = store.disconnect(user.tg_id)
+      await ctx.reply(
+        was
+          ? `🔌 Wallet <code>${was.slice(0, 6)}…${was.slice(-4)}</code> disconnected. Alerts for it are off and unsigned requests were cleared.\nConnect the same wallet again to pick your loan back up, or a different one to start fresh.`
+          : "No wallet was connected.",
+        { parse_mode: "HTML", reply_markup: signButton("🔗 Connect wallet", "/link") },
+      )
     },
 
     async position(ctx, user, edit = false) {
@@ -127,7 +152,7 @@ export function createBot(deps: Deps, bot = new Bot(deps.config.botToken)): Bot 
       const [view, sys] = await Promise.all([chain.view(address), chain.system()])
       const kb = new InlineKeyboard()
       if (view.trove) kb.webApp("➕ Add collateral", miniapp(`/i/${intent(ctx, "add_collateral", {}).id}`)).webApp("💵 Repay", miniapp(`/i/${intent(ctx, "repay", {}).id}`)).row()
-      kb.text("🛡 Protection", "cb:protect").text("🔄 Refresh", "cb:position")
+      kb.text("🛡 Protection", "cb:protect").text("🔄 Refresh", "cb:position").row().text("🔌 Disconnect wallet", "cb:disconnect")
       const text = positionCard(view, sys)
       if (edit) await ctx.editMessageText(text, { parse_mode: "HTML", reply_markup: kb }).catch(() => undefined)
       else await ctx.reply(text, { parse_mode: "HTML", reply_markup: kb })
@@ -310,6 +335,24 @@ export function createBot(deps: Deps, bot = new Bot(deps.config.botToken)): Bot 
   }))
   bot.command("help", handler((ctx) => actions.help(ctx)))
   bot.command("link", handler((ctx, user) => actions.linkWallet(ctx, user)))
+  bot.command(["disconnect", "unlink", "logout"], handler((ctx, user) => actions.disconnectAsk(ctx, user)))
+  bot.callbackQuery(/^cb:disconnect(?::(yes|no))?$/, async (ctx) => {
+    await ctx.answerCallbackQuery()
+    const choice = (ctx.match as RegExpMatchArray)[1]
+    await ctx.editMessageReplyMarkup({ reply_markup: undefined }).catch(() => undefined)
+    await handler(async (c, u) => {
+      if (!choice) return actions.disconnectAsk(c, u)
+      if (choice === "no") return void (await c.reply("Okay, your wallet stays connected."))
+      await actions.disconnect(c, u)
+    })(ctx)
+  })
+
+  // Admin-only: forget this Telegram account completely, to re-test first-time onboarding.
+  bot.command("resetme", handler(async (ctx, user) => {
+    if (!config.adminIds.includes(user.tg_id)) return void (await ctx.reply("That command is for Keel admins only."))
+    store.resetUser(user.tg_id)
+    await ctx.reply("🧹 Your Keel records are wiped (wallet link, intents, requests, alerts, premium). Nothing on-chain changed.\nSend /start to see the first-time welcome again.")
+  }))
   bot.command(["position", "status"], handler((ctx, user) => actions.position(ctx, user)))
   bot.callbackQuery("cb:position", async (ctx) => {
     await ctx.answerCallbackQuery()

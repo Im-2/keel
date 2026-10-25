@@ -15,6 +15,7 @@ import { Pay } from "./screens/Pay"
 import { Protection } from "./screens/Protection"
 import { Activity } from "./screens/Activity"
 import { Splash } from "./screens/Splash"
+import { Profile } from "./screens/Profile"
 
 export interface AppCtx {
   cfg: AppConfig
@@ -61,6 +62,7 @@ export function App({ cfg }: { cfg: AppConfig }) {
   else if (head === "i") screen = <Intent ctx={ctx} id={rest[0]} />
   else if (head === "link") screen = <Link ctx={ctx} />
   else if (head === "premium") screen = <Premium ctx={ctx} />
+  else if (head === "profile") screen = <Profile ctx={ctx} />
   else if (position.isLoading && isTab) screen = <Splash />
   else if (position.error && isTab) screen = <Home ctx={ctx} />
   else if (needsLink) screen = <Link ctx={ctx} />

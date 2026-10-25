@@ -207,6 +207,36 @@ export class Store {
     return next
   }
 
+  /**
+   * Unlink the user's wallet and drop everything tied to it: pending binding nonces, unsigned intents (including
+   * unsent claim links), one-time handoff links, alert state and any half-finished chat question. Completed intents
+   * stay as history. Nothing on-chain is touched: re-linking the same wallet finds its guardian and loan again.
+   * Returns the address that was linked.
+   */
+  disconnect(tgId: number): string | null {
+    const before = this.getUser(tgId)?.address ?? null
+    this.write("UPDATE users SET address = NULL WHERE tg_id = ?", tgId)
+    this.write("DELETE FROM nonces WHERE tg_id = ?", tgId)
+    this.write("DELETE FROM intents WHERE tg_id = ? AND status = 'pending'", tgId)
+    this.write("DELETE FROM handoffs WHERE tg_id = ?", tgId)
+    this.write("DELETE FROM alert_state WHERE tg_id = ?", tgId)
+    this.write("DELETE FROM kv WHERE key = ?", `nl:await:${tgId}`)
+    return before
+  }
+
+  /** Delete every record of a Telegram user, as if they had never used the bot (admin testing of onboarding). */
+  resetUser(tgId: number) {
+    this.write("DELETE FROM users WHERE tg_id = ?", tgId)
+    this.write("DELETE FROM nonces WHERE tg_id = ?", tgId)
+    this.write("DELETE FROM intents WHERE tg_id = ?", tgId)
+    this.write("DELETE FROM requests WHERE requester_tg = ?", tgId)
+    this.write("DELETE FROM handoffs WHERE tg_id = ?", tgId)
+    this.write("DELETE FROM alert_state WHERE tg_id = ?", tgId)
+    this.write("DELETE FROM kv WHERE key = ? OR key = ?", `nl:await:${tgId}`, `premium:${tgId}`)
+    // pending chat confirmations are stored as JSON under random ids; match them by owner
+    this.write("DELETE FROM kv WHERE key LIKE 'nl:p:%' AND value LIKE ?", `{"tg":${tgId},%`)
+  }
+
   // ---- nonces (wallet binding)
   issueNonce(tgId: number, ttl = 600): string {
     const nonce = newId(12)

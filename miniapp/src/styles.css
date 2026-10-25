@@ -304,3 +304,8 @@ a.btn { text-decoration: none; }
 .act-row, .act-row:hover { text-decoration: none; }
 .gauge-read { display: grid; justify-items: center; }
 .pill { white-space: nowrap; }
+.avatar-btn { border: 0; padding: 0; background: none; border-radius: 50%; cursor: pointer; flex: none; }
+.avatar-btn:active { transform: scale(0.95); }
+.addr-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.addr-row code { font-size: 15px; font-weight: 700; }
+.copy-btn { border: 1px solid var(--stroke-2); background: #fff; border-radius: 10px; padding: 6px 10px; font-size: 12px; font-weight: 650; cursor: pointer; }

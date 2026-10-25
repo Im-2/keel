@@ -92,7 +92,7 @@ export function helpText(): string {
     "/claimlink <code>25</code> — send MUSD to someone with no wallet",
     "/request <code>25</code> [note] · /split <code>90 @a @b</code>",
     "",
-    "/link — connect your wallet · /stats — keeper network",
+    "/link — connect or switch wallet · /disconnect — unlink it · /stats — keeper network",
   ].join("\n")
 }
 

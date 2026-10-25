@@ -42,7 +42,9 @@ export function Header({ title, greeting, back }: { title: string; greeting?: st
         {greeting && <span className="greet">{greeting}</span>}
         <h1>{title}</h1>
       </div>
-      <Avatar name={u?.first_name ?? "K"} photo={u?.photo_url} />
+      <button className="avatar-btn" onClick={() => go("/profile")} aria-label="Profile and wallet settings">
+        <Avatar name={u?.first_name ?? "K"} photo={u?.photo_url} />
+      </button>
     </header>
   )
 }

@@ -260,6 +260,7 @@ export function mountChat(bot: Bot, d: ChatDeps) {
       case "mute": return actions.setMuted(ctx, user, true)
       case "unmute": return actions.setMuted(ctx, user, false)
       case "link_wallet": return actions.linkWallet(ctx, user)
+      case "disconnect": return actions.disconnectAsk(ctx, user)
       case "premium": return actions.premium(ctx, user)
       case "help":
         await actions.help(ctx)

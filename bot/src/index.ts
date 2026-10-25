@@ -87,6 +87,8 @@ await bot.api.setMyCommands([
   { command: "split", description: "Split a bill, e.g. /split 90 @a @b" },
   { command: "premium", description: "Faster alerts, pay per use in MUSD" },
   { command: "alerts", description: "Liquidation & redemption alerts" },
+  { command: "link", description: "Connect or switch wallet" },
+  { command: "disconnect", description: "Disconnect your wallet" },
   { command: "help", description: "All commands" },
 ]).catch((e) => console.warn("setMyCommands failed:", e.message))
 

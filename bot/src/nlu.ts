@@ -10,7 +10,7 @@ export type NluIntent =
   | "send" | "claim_link" | "request" | "split"
   | "position" | "safety" | "liquidation" | "whatif"
   | "alerts" | "mute" | "unmute"
-  | "fees" | "what_musd" | "help" | "greeting" | "link_wallet" | "premium"
+  | "fees" | "what_musd" | "help" | "greeting" | "link_wallet" | "disconnect" | "premium"
 
 export interface Slots {
   /** Decimal string, e.g. "2000" or "0.01". */
@@ -223,7 +223,8 @@ const RULES: Record<NluIntent, Rule[]> = {
     R(/^(help|menu|commands|options|\?)$/, 1.5), R(/\bwhat can you do\b/, 1.5), R(/\bhow (does this|do you|do i use (this|you)) work\b/, 1.3), R(/\bhelp\b/, 1.0),
   ],
   greeting: [R(/^(hi|hello|hey|hiya|gm|good (morning|afternoon|evening)|yo|sup|start)\b/, 1.1)],
-  link_wallet: [R(/\b(connect|link|bind|add) (my |a )?wallet\b/, 1.4), R(/\bmetamask\b/, 0.6)],
+  link_wallet: [R(/\b(connect|link|bind|add) (my |a )?wallet\b/, 1.4), R(/\bmetamask\b/, 0.6), R(/\b(switch|change) (my |to a |to another )?wallets?\b/, 1.4)],
+  disconnect: [R(/\b(disconnect|unlink|log ?out|sign out|remove|forget)\b.*\bwallet\b/, 1.6), R(/^(disconnect|unlink|logout|log out)$/, 1.6)],
   premium: [R(/\bpremium\b/, 1.3), R(/\bfaster alerts\b/, 1.2)],
 }
 
@@ -379,5 +380,5 @@ export const INTENT_LABEL: Record<NluIntent, string> = {
   send: "Send MUSD", claim_link: "Claim link", request: "Request payment", split: "Split a bill",
   position: "My position", safety: "How safe am I", liquidation: "Liquidation price", whatif: "What if BTC drops",
   alerts: "Alert settings", mute: "Mute alerts", unmute: "Unmute alerts",
-  fees: "Fees", what_musd: "What is MUSD", help: "Help", greeting: "Hi", link_wallet: "Connect wallet", premium: "Premium alerts",
+  fees: "Fees", what_musd: "What is MUSD", help: "Help", greeting: "Hi", link_wallet: "Connect wallet", disconnect: "Disconnect wallet", premium: "Premium alerts",
 }
