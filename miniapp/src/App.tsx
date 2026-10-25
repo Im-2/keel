@@ -16,6 +16,8 @@ import { Protection } from "./screens/Protection"
 import { Activity } from "./screens/Activity"
 import { Splash } from "./screens/Splash"
 import { Profile } from "./screens/Profile"
+import { liveEnabled, useLive } from "./lib/useLive"
+import { Toaster } from "./ui/live"
 
 export interface AppCtx {
   cfg: AppConfig
@@ -55,6 +57,8 @@ export function App({ cfg }: { cfg: AppConfig }) {
   }, [head])
 
   const position = usePosition()
+  // one live stream for the whole app once the account is linked (nothing to watch before that)
+  useLive(liveEnabled() && !!position.data?.linked)
   const needsLink = isTab && position.data && !position.data.linked
 
   let screen
@@ -82,6 +86,7 @@ export function App({ cfg }: { cfg: AppConfig }) {
         {screen}
       </main>
       {isTab && !needsLink && !position.isLoading && <TabBar active={head} />}
+      <Toaster />
     </div>
   )
 }

@@ -10,7 +10,7 @@ export type NluIntent =
   | "send" | "claim_link" | "request" | "split"
   | "position" | "safety" | "liquidation" | "whatif"
   | "alerts" | "mute" | "unmute"
-  | "fees" | "what_musd" | "help" | "greeting" | "link_wallet" | "disconnect" | "premium"
+  | "fees" | "what_musd" | "help" | "greeting" | "link_wallet" | "disconnect" | "premium" | "history" | "balance"
 
 export interface Slots {
   /** Decimal string, e.g. "2000" or "0.01". */
@@ -97,7 +97,7 @@ function wordsToNumbers(s: string): string {
 
 const VOCAB = [
   "borrow", "loan", "repay", "collateral", "deposit", "protect", "protection", "guardian", "reserve", "fund",
-  "send", "transfer", "request", "split", "position", "status", "balance", "alerts", "alert", "notifications",
+  "send", "transfer", "request", "split", "position", "status", "balance", "alerts", "alert", "notifications", "history", "activity", "transactions",
   "mute", "unmute", "liquidated", "liquidation", "liquidate", "safe", "risk", "help", "fees", "interest",
   "bitcoin", "musd", "dollars", "everything", "premium", "wallet", "connect", "enable", "disable", "drops", "falls",
 ]
@@ -200,8 +200,8 @@ const RULES: Record<NluIntent, Rule[]> = {
   ],
   split: [R(/\bsplit\b/, 1.3), R(/\b(divide|share) (the )?(bill|cost|check)\b/, 1.2), R(/\bgo halves\b/, 1.0)],
   position: [
-    R(/\b(my )?(position|status|portfolio|dashboard|overview)\b/, 1.0), R(/\bhow much (do i|i) owe\b/, 1.2), R(/\bmy (loan|debt|balance)\b/, 0.7),
-    R(/\bshow (me )?(my )?(loan|position|account)\b/, 1.0), R(/\bbalance\b/, 0.6),
+    R(/\b(my )?(position|status|portfolio|dashboard|overview)\b/, 1.0), R(/\bhow much (do i|i) owe\b/, 1.2), R(/\bmy (loan|debt)\b/, 0.7),
+    R(/\bshow (me )?(my )?(loan|position|account)\b/, 1.0),
   ],
   safety: [
     R(/\bhow safe\b/, 1.4), R(/\bam i (at risk|safe|ok|okay|in danger|fine)\b/, 1.4), R(/\bis my (loan|position) (safe|ok|okay|at risk|healthy)\b/, 1.4),
@@ -226,6 +226,16 @@ const RULES: Record<NluIntent, Rule[]> = {
   link_wallet: [R(/\b(connect|link|bind|add) (my |a )?wallet\b/, 1.4), R(/\bmetamask\b/, 0.6), R(/\b(switch|change) (my |to a |to another )?wallets?\b/, 1.4)],
   disconnect: [R(/\b(disconnect|unlink|log ?out|sign out|remove|forget)\b.*\bwallet\b/, 1.6), R(/^(disconnect|unlink|logout|log out)$/, 1.6)],
   premium: [R(/\bpremium\b/, 1.3), R(/\bfaster alerts\b/, 1.2)],
+  history: [
+    R(/^(my )?(history|activity|transactions?|txs?)$/, 1.8), R(/\b(what ?s|what is|show|see|check|view) (me )?(my )?(transaction |tx |payment )?(history|activity)\b/, 1.6),
+    R(/\b(recent|past|last|latest) (transactions|activity|payments|txs?)\b/, 1.5), R(/\bwhat (did|have) i (do|done|sent|send|received)\b/, 1.5),
+    R(/\bmy (history|activity|transactions|payments)\b/, 1.3), R(/\b(history|transactions)\b/, 0.6),
+  ],
+  balance: [
+    R(/^(my )?(balance|balances|wallet)$/, 1.8), R(/\b(what ?s|what is|show|check|see) (me )?(my )?(wallet )?(balance|balances)\b/, 1.6),
+    R(/\bhow much (do i have|have i got|money do i have|is in my wallet|musd do i have|btc do i have|bitcoin do i have)\b/, 1.6),
+    R(/\bmy (wallet|balance|balances|funds)\b/, 0.9),
+  ],
 }
 
 // ------------------------------------------------------------------------------------------ slots
@@ -381,4 +391,5 @@ export const INTENT_LABEL: Record<NluIntent, string> = {
   position: "My position", safety: "How safe am I", liquidation: "Liquidation price", whatif: "What if BTC drops",
   alerts: "Alert settings", mute: "Mute alerts", unmute: "Unmute alerts",
   fees: "Fees", what_musd: "What is MUSD", help: "Help", greeting: "Hi", link_wallet: "Connect wallet", disconnect: "Disconnect wallet", premium: "Premium alerts",
+  history: "My history", balance: "My balance",
 }

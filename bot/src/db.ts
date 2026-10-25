@@ -35,6 +35,22 @@ export interface IntentRow {
   created_at: number
 }
 
+/** What an on-chain event means for one linked wallet. */
+export type ChainEventKind = "transfer_in" | "transfer_out" | "protected" | "link_created" | "link_claimed" | "link_cancelled"
+export interface ChainEventRow {
+  tx: string
+  log_index: number
+  /** The linked wallet this row belongs to (lowercase). */
+  wallet: string
+  kind: ChainEventKind
+  /** The other side: sender/recipient of a transfer, claimer of a link (lowercase). */
+  counterparty: string | null
+  amount: string | null
+  block: number
+  at: number
+  data: Record<string, string>
+}
+
 export interface Handoff {
   token: string
   tg_id: number
@@ -81,8 +97,15 @@ const SCHEMA = `
       CREATE TABLE IF NOT EXISTS alert_state (tg_id INTEGER NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY (tg_id, key));
       CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS handoffs (token TEXT PRIMARY KEY, tg_id INTEGER NOT NULL, purpose TEXT NOT NULL, intent_id TEXT, expires INTEGER NOT NULL, used INTEGER NOT NULL DEFAULT 0);
+      CREATE TABLE IF NOT EXISTS chain_events (
+        tx TEXT NOT NULL, log_index INTEGER NOT NULL, wallet TEXT NOT NULL, kind TEXT NOT NULL, counterparty TEXT,
+        amount TEXT, block INTEGER NOT NULL, at INTEGER NOT NULL, data TEXT NOT NULL DEFAULT '{}', PRIMARY KEY (tx, log_index, wallet)
+      );
+      CREATE INDEX IF NOT EXISTS idx_events_wallet ON chain_events(wallet, block);
+      CREATE TABLE IF NOT EXISTS notices (key TEXT PRIMARY KEY, at INTEGER NOT NULL);
+      CREATE TABLE IF NOT EXISTS outbox (id TEXT PRIMARY KEY, tg_id INTEGER NOT NULL, html TEXT NOT NULL, opts TEXT NOT NULL DEFAULT '{}', created_at INTEGER NOT NULL);
 `
-const TABLES = ["users", "nonces", "intents", "requests", "alert_state", "kv", "handoffs"] as const
+const TABLES = ["users", "nonces", "intents", "requests", "alert_state", "kv", "handoffs", "chain_events", "notices", "outbox"] as const
 
 /** A remote copy of the database (Turso/libSQL in production). */
 export interface Mirror {
@@ -190,6 +213,8 @@ export class Store {
     // an address belongs to exactly one Telegram account
     this.write("UPDATE users SET address = NULL WHERE lower(address) = lower(?) AND tg_id != ?", address, tgId)
     this.write("UPDATE users SET address = ? WHERE tg_id = ?", address, tgId)
+    // (re)linking: fill any gap in this wallet's history on the next look (rows are deduplicated)
+    this.write("DELETE FROM kv WHERE key = ?", `hist:backfilled:${address.toLowerCase()}`)
   }
   findByUsername(username: string): UserRow | null {
     return this.mapUser(asRow(this.db.prepare("SELECT * FROM users WHERE lower(username) = lower(?)").get(username.replace(/^@/, ""))))
@@ -232,9 +257,70 @@ export class Store {
     this.write("DELETE FROM requests WHERE requester_tg = ?", tgId)
     this.write("DELETE FROM handoffs WHERE tg_id = ?", tgId)
     this.write("DELETE FROM alert_state WHERE tg_id = ?", tgId)
+    this.write("DELETE FROM outbox WHERE tg_id = ?", tgId)
     this.write("DELETE FROM kv WHERE key = ? OR key = ?", `nl:await:${tgId}`, `premium:${tgId}`)
     // pending chat confirmations are stored as JSON under random ids; match them by owner
     this.write("DELETE FROM kv WHERE key LIKE 'nl:p:%' AND value LIKE ?", `{"tg":${tgId},%`)
+  }
+
+  // ---- on-chain ledger: MUSD transfers, KeelPay links and guardian events touching a linked wallet
+  /** Insert once per (tx, log, wallet); returns false when the event was already recorded. */
+  recordEvent(e: ChainEventRow): boolean {
+    const r = this.write(
+      "INSERT OR IGNORE INTO chain_events (tx, log_index, wallet, kind, counterparty, amount, block, at, data) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      e.tx.toLowerCase(), e.log_index, e.wallet.toLowerCase(), e.kind, e.counterparty?.toLowerCase() ?? null, e.amount ?? null, e.block, e.at, JSON.stringify(e.data ?? {}),
+    )
+    return Number(r.changes) > 0
+  }
+  eventsFor(wallet: string, limit = 200): ChainEventRow[] {
+    return (this.db.prepare("SELECT * FROM chain_events WHERE wallet = ? ORDER BY block DESC, log_index DESC LIMIT ?").all(wallet.toLowerCase(), limit) as Record<string, unknown>[]).map((r) => ({
+      tx: r.tx as string, log_index: r.log_index as number, wallet: r.wallet as string, kind: r.kind as ChainEventKind, counterparty: (r.counterparty as string) ?? null,
+      amount: (r.amount as string) ?? null, block: r.block as number, at: r.at as number, data: JSON.parse((r.data as string) || "{}"),
+    }))
+  }
+  eventsInTx(tx: string): ChainEventRow[] {
+    return (this.db.prepare("SELECT * FROM chain_events WHERE tx = ?").all(tx.toLowerCase()) as Record<string, unknown>[]).map((r) => ({
+      tx: r.tx as string, log_index: r.log_index as number, wallet: r.wallet as string, kind: r.kind as ChainEventKind, counterparty: (r.counterparty as string) ?? null,
+      amount: (r.amount as string) ?? null, block: r.block as number, at: r.at as number, data: JSON.parse((r.data as string) || "{}"),
+    }))
+  }
+  /** The linked wallet that created a claim link, from its LinkCreated row. */
+  linkOwner(link: string): string | null {
+    const r = this.db.prepare("SELECT wallet FROM chain_events WHERE kind = 'link_created' AND counterparty = ? LIMIT 1").get(link.toLowerCase()) as { wallet: string } | undefined
+    return r?.wallet ?? null
+  }
+  intentByTx(tx: string): IntentRow | null {
+    const r = asRow(this.db.prepare("SELECT * FROM intents WHERE lower(tx_hash) = lower(?)").get(tx))
+    return r ? this.mapIntent(r) : null
+  }
+  /** Pending (unsigned or unconfirmed) intents of one type, newest first. */
+  pendingIntents(type?: IntentType): IntentRow[] {
+    const rows = type
+      ? this.db.prepare("SELECT * FROM intents WHERE status = 'pending' AND type = ? ORDER BY created_at DESC").all(type)
+      : this.db.prepare("SELECT * FROM intents WHERE status = 'pending' AND tx_hash IS NOT NULL ORDER BY created_at DESC").all()
+    return (rows as Record<string, unknown>[]).map((r) => this.mapIntent(r))
+  }
+  /** The wallet reported a broadcast transaction: remember it so the server can confirm it even if the app closes. */
+  setIntentTx(id: string, txHash: string) {
+    this.write("UPDATE intents SET tx_hash = ? WHERE id = ? AND status = 'pending'", txHash, id)
+  }
+
+  // ---- notification dedup: a notice key is claimed exactly once, across restarts
+  claimNotice(key: string): boolean {
+    return Number(this.write("INSERT OR IGNORE INTO notices (key, at) VALUES (?, ?)", key, now()).changes) > 0
+  }
+
+  // ---- outbox: messages for people Telegram won't let us reach yet (never started the bot, or blocked it)
+  queueMessage(tgId: number, html: string, opts: unknown) {
+    this.write("INSERT INTO outbox (id, tg_id, html, opts, created_at) VALUES (?, ?, ?, ?, ?)", newId(8), tgId, html, JSON.stringify(opts ?? {}), now())
+  }
+  takeMessages(tgId: number): Array<{ html: string; opts: unknown }> {
+    const rows = this.db.prepare("SELECT * FROM outbox WHERE tg_id = ? ORDER BY created_at, rowid").all(tgId) as Record<string, unknown>[]
+    if (rows.length) this.write("DELETE FROM outbox WHERE tg_id = ?", tgId)
+    return rows.map((r) => ({ html: r.html as string, opts: JSON.parse(r.opts as string) }))
+  }
+  hasQueued(tgId: number): boolean {
+    return !!this.db.prepare("SELECT 1 FROM outbox WHERE tg_id = ? LIMIT 1").get(tgId)
   }
 
   // ---- nonces (wallet binding)
@@ -257,16 +343,19 @@ export class Store {
     this.write("INSERT INTO intents (id, tg_id, type, params, chat_id, created_at) VALUES (?, ?, ?, ?, ?, ?)", id, tgId, type, JSON.stringify(params), chatId ?? null, now())
     return this.getIntent(id)!
   }
+  private mapIntent(r: Record<string, unknown>): IntentRow {
+    return { ...r, params: JSON.parse(r.params as string) } as unknown as IntentRow
+  }
   getIntent(id: string): IntentRow | null {
     const r = this.db.prepare("SELECT * FROM intents WHERE id = ?").get(id) as Record<string, unknown> | undefined
-    return r ? ({ ...r, params: JSON.parse(r.params as string) } as unknown as IntentRow) : null
+    return r ? this.mapIntent(r) : null
   }
   listIntents(tgId: number, limit = 30): IntentRow[] {
     const rows = this.db.prepare("SELECT * FROM intents WHERE tg_id = ? ORDER BY created_at DESC, rowid DESC LIMIT ?").all(tgId, limit) as Record<string, unknown>[]
     return rows.map((r) => ({ ...r, params: JSON.parse(r.params as string) }) as unknown as IntentRow)
   }
   completeIntent(id: string, status: "done" | "failed", txHash?: string) {
-    this.write("UPDATE intents SET status = ?, tx_hash = ? WHERE id = ? AND status = 'pending'", status, txHash ?? null, id)
+    this.write("UPDATE intents SET status = ?, tx_hash = COALESCE(?, tx_hash) WHERE id = ? AND status = 'pending'", status, txHash ?? null, id)
   }
 
   // ---- payment requests / splits

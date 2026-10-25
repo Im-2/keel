@@ -4,7 +4,8 @@ import { go, useActivity, useMarket, usePosition } from "../lib/data"
 import { big, compact, fmtBtc, fmtIcr, fmtMusd, fmtUsd, icrPct, num, toneOf, E18 } from "../lib/units"
 import { Header } from "../ui/shell"
 import { Button, Gauge, Glass, MezoBadge, Skeleton, Sparkline, StateView } from "../ui/kit"
-import { ActivityRow, explorerFor } from "../ui/activity"
+import { ActivityRow, explorerFor, useNewRows } from "../ui/activity"
+import { BalanceCard } from "../ui/balance"
 import { IconAlert, IconCheck, IconQueue, IconShield, IconDrop } from "../ui/icons"
 import { shortError } from "../components"
 import type { AppCtx } from "../App"
@@ -14,6 +15,7 @@ export function Home({ ctx }: { ctx: AppCtx }) {
   const market = useMarket()
   const act = useActivity()
   const [flipped, setFlipped] = useState(false)
+  const fresh = useNewRows(act.data?.items)
   const name = pos.data?.user.firstName ?? tg?.initDataUnsafe.user?.first_name ?? "there"
 
   if (pos.error) {
@@ -34,7 +36,6 @@ export function Home({ ctx }: { ctx: AppCtx }) {
   const tone = toneOf(icr)
   // ratio the current loan would have had at each recent price: shows how BTC moves hit you
   const icrSeries = t && prices.length ? prices.map((pr) => (num(big(t.coll)) * pr) / num(big(t.debt)) * 100) : []
-  const change = prices.length > 1 ? ((prices[prices.length - 1] - prices[0]) / prices[0]) * 100 : 0
 
   return (
     <>
@@ -85,17 +86,7 @@ export function Home({ ctx }: { ctx: AppCtx }) {
 
       {sys?.recoveryMode && <p className="notice notice-danger">Recovery Mode is active: loans under 150% are easier to liquidate.</p>}
 
-      <Glass className="balance">
-        <div>
-          <span className="label">Wallet balance</span>
-          {p ? <strong className="big">{fmtBtc(big(p.wallet?.btc), 5)}</strong> : <Skeleton h={26} w={140} />}
-          <small className="muted">
-            BTC {sys ? fmtUsd(price, 0) : "…"}
-            {prices.length > 1 && <span className={change >= 0 ? "up" : "down"}> {change >= 0 ? "+" : ""}{change.toFixed(1)}% 7d</span>}
-          </small>
-        </div>
-        <Sparkline values={prices} tone={change >= 0 ? "green" : "red"} width={110} height={44} />
-      </Glass>
+      <BalanceCard p={p} prices={market.data?.prices ?? []} network={ctx.cfg.network} />
 
       <div className="tiles">
         <Glass className="tile" onClick={() => setFlipped(true)}>
@@ -127,7 +118,7 @@ export function Home({ ctx }: { ctx: AppCtx }) {
         {act.isLoading ? (
           [0, 1, 2].map((i) => <Skeleton key={i} h={44} style={{ margin: "8px 0" }} />)
         ) : act.data?.items.length ? (
-          act.data.items.slice(0, 4).map((it, i) => <ActivityRow key={it.id} item={it} explorer={explorerFor(ctx.cfg.network)} index={i} />)
+          act.data.items.slice(0, 4).map((it, i) => <ActivityRow key={it.id} item={it} explorer={explorerFor(ctx.cfg.network)} index={i} fresh={fresh.has(it.id)} />)
         ) : (
           <p className="muted small">Nothing yet. Your loans, protections and payments show up here.</p>
         )}

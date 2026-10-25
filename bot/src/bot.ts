@@ -1,18 +1,23 @@
 import { Bot, InlineKeyboard, type Context } from "grammy"
 import {
-  E18, DEFAULT_BORROW, DEFAULT_BORROW_ICR, GAS_BUFFER, SUGGESTED_RESERVE, closeCost, maxPartialRepay, explorerTx, fmtBtc, fmtIcr, fmtMusd, pct, quoteBorrow, riskLevel, RISK_EMOJI, parseUnits18,
+  E18, DEFAULT_BORROW, DEFAULT_BORROW_ICR, faucetUrl, GAS_BUFFER, SUGGESTED_RESERVE, closeCost, maxPartialRepay, explorerTx, fmtBtc, fmtIcr, fmtMusd, pct, quoteBorrow, riskLevel, RISK_EMOJI, parseUnits18,
 } from "@keel/shared"
 import type { Config } from "./config"
 import type { Store, UserRow, IntentRow, IntentType } from "./db"
 import type { ChainService } from "./chain"
-import { borrowCard, esc, helpText, positionCard, renderRequest, welcomeText } from "./format"
+import { balanceCard, borrowCard, esc, helpText, historyLine, positionCard, renderRequest, welcomeText } from "./format"
 import { UserError, args, parseAmount, parsePercent, parseRecipient, splitArgs, type Recipient } from "./parse"
 import { mountChat } from "./chat"
+import { NOT_ON_KEEL, resolveRecipient } from "./recipient"
+import { History } from "./history"
+import { TelegramNotifier, flushOutbox } from "./notify"
 
 export interface Deps {
   config: Config
   store: Store
   chain: ChainService
+  /** The shared history feed (intents + on-chain ledger); built here when not given (tests). */
+  history?: History
 }
 
 /** Everything a user can do. Slash commands and the natural-language layer both call these, so they behave identically. */
@@ -40,10 +45,21 @@ export interface Actions {
   claimLink(ctx: Context, user: UserRow, a: { amount: bigint; forName?: string }): Promise<void>
   request(ctx: Context, user: UserRow, a: { amount: bigint; memo?: string | null }): Promise<void>
   split(ctx: Context, user: UserRow, a: { total: bigint; names: string[]; memo?: string | null }): Promise<void>
+  balance(ctx: Context, user: UserRow): Promise<void>
+  history(ctx: Context, user: UserRow, offset?: number): Promise<void>
 }
 
 export function createBot(deps: Deps, bot = new Bot(deps.config.botToken)): Bot {
   const { config, store, chain } = deps
+  const history = deps.history ?? new History({ config, store, chain })
+  const notifier = new TelegramNotifier(bot.api)
+
+  // Anyone who talks to the bot can be reached now: deliver what was queued while Telegram wouldn't let us
+  // (they never pressed Start, or had blocked the bot). After the handler, so its reply comes first.
+  bot.use(async (ctx, next) => {
+    await next()
+    if (ctx.from && ctx.chat?.type === "private") await flushOutbox(store, notifier, ctx.from.id).catch(() => undefined)
+  })
   const miniapp = (hash: string) => `${config.miniappUrl}/#${hash}`
   const dm = (suffix = "") => `https://t.me/${config.botUsername}${suffix}`
   const isPrivate = (ctx: Context) => ctx.chat?.type === "private"
@@ -153,7 +169,8 @@ export function createBot(deps: Deps, bot = new Bot(deps.config.botToken)): Bot 
       const kb = new InlineKeyboard()
       if (view.trove) kb.webApp("➕ Add collateral", miniapp(`/i/${intent(ctx, "add_collateral", {}).id}`)).webApp("💵 Repay", miniapp(`/i/${intent(ctx, "repay", {}).id}`)).row()
       kb.text("🛡 Protection", "cb:protect").text("🔄 Refresh", "cb:position").row().text("🔌 Disconnect wallet", "cb:disconnect")
-      const text = positionCard(view, sys)
+      const [btc, musd] = await Promise.all([chain.balance(address), chain.musdBalance(address)])
+      const text = positionCard(view, sys) + "\n\n" + balanceCard(view, sys, { btc, musd }, faucetUrl(config.network) ?? undefined)
       if (edit) await ctx.editMessageText(text, { parse_mode: "HTML", reply_markup: kb }).catch(() => undefined)
       else await ctx.reply(text, { parse_mode: "HTML", reply_markup: kb })
     },
@@ -288,20 +305,45 @@ export function createBot(deps: Deps, bot = new Bot(deps.config.botToken)): Bot 
 
     async send(ctx, user, { to: recipient, amount, memo = "" }) {
       if (!(await actions.needWallet(ctx, user))) return
-      if (recipient.kind === "address") {
-        const i = intent(ctx, "send", { to: recipient.address, amount: amount.toString(), label: recipient.address.slice(0, 8) + "…", memo })
-        return void (await ctx.reply(`Send <b>${fmtMusd(amount)}</b> to <code>${recipient.address}</code>.`, { parse_mode: "HTML", reply_markup: signButton("✍️ Review & sign", `/i/${i.id}`) }))
+      const r = resolveRecipient(store, user, recipient.kind === "address" ? recipient.address : recipient.username)
+      if (r.kind === "invalid") throw new UserError(r.error)
+      if (r.kind === "self") throw new UserError("That's your own wallet. Send to @username or another 0x address.")
+      if (r.kind === "wallet") {
+        const i = intent(ctx, "send", { to: r.address, amount: amount.toString(), label: r.label, ...(r.user ? { toTg: r.user.tg_id } : {}), memo })
+        const to = r.user ? `<b>${esc(r.label)}</b>` : `<code>${r.address}</code>`
+        return void (await ctx.reply(`Send <b>${fmtMusd(amount)}</b> to ${to}${memo ? ` for “${esc(memo)}”` : ""}.\nYou'll see ✅ here once it's confirmed on Mezo.`, { parse_mode: "HTML", reply_markup: signButton("✍️ Review & sign", `/i/${i.id}`) }))
       }
-      const target = store.findByUsername(recipient.username)
-      if (target?.address) {
-        const i = intent(ctx, "send", { to: target.address, amount: amount.toString(), label: "@" + recipient.username, toTg: target.tg_id, memo })
-        return void (await ctx.reply(`Send <b>${fmtMusd(amount)}</b> to <b>@${esc(recipient.username)}</b>.`, { parse_mode: "HTML", reply_markup: signButton("✍️ Review & sign", `/i/${i.id}`) }))
-      }
-      const i = intent(ctx, "create_claim", { amount: amount.toString(), forName: "@" + recipient.username, expiryHours: 72 })
+      const i = intent(ctx, "create_claim", { amount: amount.toString(), forName: "@" + r.username, expiryHours: 72 })
       await ctx.reply(
-        `<b>@${esc(recipient.username)}</b> hasn't linked a wallet to Keel yet. No problem — create a <b>claim link</b>: <b>${fmtMusd(amount)}</b> is held in escrow and they claim it in one tap (you can cancel any time; it refunds after 72h).`,
+        `<b>@${esc(r.username)}</b>: ${esc(NOT_ON_KEEL)}.\n<b>${fmtMusd(amount)}</b> is held in escrow until they claim it in one tap; it refunds to you after 72h if they don't, and you can cancel any time.`,
         { parse_mode: "HTML", reply_markup: signButton("🎁 Create claim link", `/i/${i.id}`) },
       )
+    },
+
+    async balance(ctx, user) {
+      const address = await actions.needWallet(ctx, user)
+      if (!address) return
+      const [view, sys, btc, musd] = await Promise.all([chain.view(address), chain.system(), chain.balance(address), chain.musdBalance(address)])
+      const kb = new InlineKeyboard().text("🔄 Refresh", "cb:balance").text("📜 History", "hist:0")
+      if (isPrivate(ctx)) kb.row().webApp("📊 Open dashboard", miniapp("/"))
+      await ctx.reply(balanceCard(view, sys, { btc, musd }, faucetUrl(config.network) ?? undefined), { parse_mode: "HTML", reply_markup: kb, link_preview_options: { is_disabled: true } })
+    },
+
+    async history(ctx, user, offset = 0) {
+      // personal data never goes into a group chat
+      if (!isPrivate(ctx)) return void (await ctx.reply("Your history is private. Let's look at it in our chat 👉", { reply_markup: new InlineKeyboard().url("Open Keel", dm()) }))
+      const PAGE = 10
+      const { items, more } = await history.feed(user, { limit: PAGE, offset })
+      if (!items.length && offset === 0) {
+        const kb = new InlineKeyboard()
+        if (!user.address) kb.webApp("🔗 Connect wallet", miniapp("/link"))
+        return void (await ctx.reply(user.address ? "No activity yet. Borrow with /borrow, or send MUSD with /send @friend 5." : "No activity yet. Connect a wallet to start.", { reply_markup: kb }))
+      }
+      const lines = items.map((i) => historyLine(i, (tx) => explorerTx(config.network, tx)))
+      const kb = new InlineKeyboard()
+      if (more) kb.text("⬇️ Show more", `hist:${offset + PAGE}`)
+      if (isPrivate(ctx)) kb.webApp("📊 Open Activity", miniapp("/activity"))
+      await ctx.reply(`📜 <b>${offset ? "Earlier activity" : "Your recent activity"}</b>\n\n${lines.join("\n\n")}`, { parse_mode: "HTML", reply_markup: kb, link_preview_options: { is_disabled: true } })
     },
 
     async claimLink(ctx, user, { amount, forName }) {
@@ -416,10 +458,23 @@ export function createBot(deps: Deps, bot = new Bot(deps.config.botToken)): Bot 
     await actions.help(ctx)
   })
   bot.command("premium", handler((ctx, user) => actions.premium(ctx, user)))
+  bot.command(["history", "activity", "transactions"], handler((ctx, user) => actions.history(ctx, user)))
+  bot.command(["balance", "balances", "wallet"], handler((ctx, user) => actions.balance(ctx, user)))
+  bot.callbackQuery(/^hist:(\d{1,4})$/, async (ctx) => {
+    await ctx.answerCallbackQuery()
+    await actions.history(ctx, remember(ctx), Number((ctx.match as RegExpMatchArray)[1]))
+  })
+  bot.callbackQuery("cb:balance", async (ctx) => {
+    await ctx.answerCallbackQuery()
+    await actions.balance(ctx, remember(ctx))
+  })
 
   bot.command("send", handler(async (ctx, user) => {
     if (!(await actions.needWallet(ctx, user))) return
-    const [to, amt, ...note] = splitArgs(args(ctx))
+    let [to, amt, ...note] = splitArgs(args(ctx))
+    // "/send 5 @bob" works as well as "/send @bob 5"
+    if (to && amt && /^\d+([.,]\d+)?$/.test(to) && !/^\d+([.,]\d+)?$/.test(amt)) [to, amt] = [amt, to]
+    if (!to) throw new UserError("Usage: /send @username 5 (or a 0x address), optionally followed by a note.")
     const recipient = parseRecipient(to)
     await actions.send(ctx, user, { to: recipient, amount: parseAmount(amt, "amount (in MUSD)"), memo: note.join(" ") })
   }))

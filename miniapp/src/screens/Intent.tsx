@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react"
-import { useQuery } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import type { Hex, WalletClient } from "viem"
-import { api, tg, type IntentDto } from "../lib/api"
+import { ApiError, api, tg, type ActivityItem, type IntentDto } from "../lib/api"
+import { TxRevertedError, pendingItem, settle, txFailureReason, upsertTop, waitForSuccess } from "../lib/tx"
 import { buildPlan, type Plan } from "../lib/plan"
 import { go, useRefreshAll } from "../lib/data"
 import { handoffToken, inTelegram } from "../lib/telegram"
@@ -23,7 +24,12 @@ export function Intent({ ctx, id }: { ctx: AppCtx; id?: string }) {
   if (q.isLoading) return (<><Header title="Review" back /><Glass><Skeleton h={22} w="50%" /><Skeleton h={160} style={{ marginTop: 14 }} /></Glass></>)
   if (q.error) return <StateView kind="error" title="Can't open this request" body={`${shortError(q.error)}. Open it from the Keel chat in Telegram.`} />
   const intent = q.data!
-  if (intent.status !== "pending") return <StateView kind="success" title="Already done" body="This request was completed." action={<Button onClick={() => go("/")}>Open dashboard</Button>} />
+  if (intent.status !== "pending") {
+    const link = intent.tx_hash ? <a className="tx-link" href={`${explorerFor(ctx.cfg.network)}/tx/${intent.tx_hash}`} target="_blank" rel="noreferrer">View transaction <IconExternal size={14} /></a> : null
+    return intent.status === "done"
+      ? <StateView kind="success" title="Already done" body={<>This was confirmed on Mezo. {link}</>} action={<Button onClick={() => go("/activity")}>Open activity</Button>} />
+      : <StateView kind="error" title="This one failed" body={<>Nothing was sent. Start it again from the chat or the Pay tab. {link}</>} action={<Button onClick={() => go("/")}>Open dashboard</Button>} />
+  }
   return (
     <>
       <Header title="Review & sign" greeting="Confirm" back />
@@ -40,6 +46,7 @@ function Review({ ctx, intent, account, wallet }: { ctx: AppCtx; intent: IntentD
   const [stepIdx, setStepIdx] = useState(-1)
   const [done, setDone] = useState<{ tx: Hex; claimKey?: Hex } | null>(null)
   const refresh = useRefreshAll()
+  const qc = useQueryClient()
 
   useEffect(() => {
     let live = true
@@ -62,19 +69,36 @@ function Review({ ctx, intent, account, wallet }: { ctx: AppCtx; intent: IntentD
       for (let i = 0; i < plan.steps.length; i++) {
         setStepIdx(i)
         last = await plan.steps[i].run(wallet, { pub: ctx.pub, deployment: ctx.deployment, account })
-        await ctx.pub.waitForTransactionReceipt({ hash: last })
+        if (i === plan.steps.length - 1) {
+          // broadcast: tell the server (it settles it even if this screen closes) and show it as pending at once
+          void api.complete(intent.id, { status: "submitted", txHash: last }).catch(() => undefined)
+          qc.setQueriesData<{ items: ActivityItem[]; more: boolean }>({ queryKey: ["activity"] }, (d) => d && { ...d, items: upsertTop(d.items, pendingItem(intent, last)) })
+        }
+        // success only on a mined, non-reverted receipt; "not found" from a lagging node is just a retry
+        await waitForSuccess((hash) => ctx.pub.getTransactionReceipt({ hash }), last)
         // public RPC nodes lag each other by a few seconds: let the next step see this one (e.g. approve -> create)
         if (i < plan.steps.length - 1) await new Promise((r) => setTimeout(r, 3000))
       }
       setStepIdx(-1)
-      await api.complete(intent.id, { status: "done", txHash: last }).catch(() => undefined)
+      qc.setQueriesData<{ items: ActivityItem[]; more: boolean }>({ queryKey: ["activity"] }, (d) => d && { ...d, items: settle(d.items, intent.id, "confirmed") })
+      // the chain says success; the server double-checks (retrying past lagging nodes) and notifies both sides
+      for (let k = 0; k < 4; k++) {
+        const r = await api.complete(intent.id, { status: "done", txHash: last }).catch((e) => (e instanceof ApiError && e.status === 409 ? null : { ok: false }))
+        if (r) break
+        await new Promise((res) => setTimeout(res, 2500))
+      }
       haptic("success")
       refresh()
       setDone({ tx: last, claimKey: plan.claimKey })
     } catch (e) {
       setStepIdx(-1)
       haptic("error")
-      setErr(shortError(e))
+      if (e instanceof TxRevertedError) {
+        void api.complete(intent.id, { status: "done", txHash: e.hash }).catch(() => undefined) // server records it as failed
+        qc.setQueriesData<{ items: ActivityItem[]; more: boolean }>({ queryKey: ["activity"] }, (d) => d && { ...d, items: settle(d.items, intent.id, "failed") })
+      }
+      setErr(txFailureReason(e))
+      refresh()
     }
   }
 

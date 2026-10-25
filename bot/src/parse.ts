@@ -27,7 +27,7 @@ export type Recipient = { kind: "address"; address: `0x${string}` } | { kind: "u
 export function parseRecipient(raw: string | undefined): Recipient {
   if (!raw) throw new UserError("Who is it for? Use @username or a 0x address.")
   if (/^0x[0-9a-fA-F]{40}$/.test(raw)) return { kind: "address", address: raw as `0x${string}` }
-  if (/^@[A-Za-z0-9_]{3,32}$/.test(raw)) return { kind: "username", username: raw.slice(1) }
+  if (/^@?[A-Za-z0-9_]{3,32}$/.test(raw) && !/^\d+([.,]\d+)?$/.test(raw)) return { kind: "username", username: raw.replace(/^@/, "") }
   throw new UserError(`"${raw}" doesn't look like @username or a 0x address.`)
 }
 

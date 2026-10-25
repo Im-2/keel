@@ -51,6 +51,7 @@ export interface IntentDto {
   type: string
   params: Record<string, string>
   status: "pending" | "done" | "failed"
+  tx_hash?: string | null
 }
 
 /** Telegram initData inside Telegram; a one-time handoff token inside a wallet's own browser. */
@@ -68,7 +69,7 @@ export function authHeaders(): Record<string, string> {
 export const apiUrl = (path: string) => `${(import.meta.env.VITE_API_BASE as string | undefined)?.replace(/\/$/, "") ?? ""}${path}`
 
 export class ApiError extends Error {
-  constructor(message: string, readonly status: number) {
+  constructor(message: string, readonly status: number, readonly code?: string) {
     super(message)
   }
 }
@@ -84,7 +85,7 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
     throw new ApiError(e.name === "TimeoutError" ? "Keel's server is not responding" : "Can't reach Keel's server", 0)
   })
   const data = await res.json().catch(() => ({}))
-  if (!res.ok) throw new ApiError((data as { error?: string }).error ?? `Request failed (${res.status})`, res.status)
+  if (!res.ok) throw new ApiError((data as { error?: string }).error ?? `Request failed (${res.status})`, res.status, (data as { code?: string }).code)
   return data as T
 }
 
@@ -92,13 +93,15 @@ export const api = {
   config: () => call<AppConfig>("GET", "/api/config"),
   me: () => call<{ tgId: number; username?: string; address: Address | null }>("GET", "/api/me"),
   nonce: () => call<{ nonce: string; message: string }>("POST", "/api/nonce", {}),
-  bind: (b: { nonce: string; address: Address; signature: string }) => call<{ address: Address }>("POST", "/api/bind", b),
+  bind: (b: { nonce: string; address: Address; signature: string; takeover?: boolean }) => call<{ address: Address }>("POST", "/api/bind", b),
   intent: (id: string) => call<IntentDto>("GET", `/api/intent/${id}`),
-  complete: (id: string, b: { status: "done" | "failed"; txHash?: string }) => call<{ ok: boolean }>("POST", `/api/intent/${id}/complete`, b),
+  complete: (id: string, b: { status: "submitted" | "done" | "failed"; txHash?: string }) =>
+    call<{ ok: boolean; status: "pending" | "done" | "failed"; reason?: string; txHash?: string }>("POST", `/api/intent/${id}/complete`, b),
   claimInfo: (link: Address) => call<{ sender: Address; amount: string; expiry: number; settled: boolean }>("GET", `/api/claim/${link}`),
   position: () => call<PositionDto>("GET", "/api/position"),
   market: () => call<{ source: string; prices: Array<[number, number]>; oracle: number }>("GET", "/api/market"),
-  activity: () => call<{ items: ActivityItem[] }>("GET", "/api/activity"),
+  activity: (limit = 30, offset = 0) => call<{ items: ActivityItem[]; more: boolean }>("GET", `/api/activity?limit=${limit}&offset=${offset}`),
+  liveToken: () => call<{ token: string; url: string }>("POST", "/api/live/token", {}),
   disconnect: () => call<{ ok: boolean; disconnected: Address | null }>("POST", "/api/disconnect", {}),
   handoff: (b: { purpose: "link" } | { purpose: "intent"; intentId: string }) => call<{ token: string; expires: number; url: string }>("POST", "/api/handoff", b),
   createIntent: (b: Record<string, unknown>) => call<IntentDto>("POST", "/api/intent", b),
@@ -110,7 +113,7 @@ export interface PositionDto {
   linked: boolean
   address?: Address
   user: { firstName: string | null; username: string | null }
-  wallet?: { btc: string }
+  wallet?: { btc: string; musd?: string }
   kind?: "guardian" | "direct" | "none"
   guardianAddress?: Address | null
   trove?: { coll: string; debt: string; icr: string; liqPrice: string; bufferBps: number; risk: string; interestRateBps: number } | null
@@ -119,10 +122,17 @@ export interface PositionDto {
   system?: { price: string; tcr: string; recoveryMode: boolean; minNetDebt: string; borrowingRate: string; interestRateBps: number }
 }
 
+/** One history row; the bot's /history uses the same feed (bot/src/history.ts). */
 export interface ActivityItem {
   id: string
   type: string
-  params: Record<string, string>
+  status: "confirmed" | "pending" | "failed"
+  /** 18-decimal integer string. */
+  amount: string | null
+  asset: "MUSD" | "BTC" | null
+  counterparty: string | null
+  memo: string | null
   tx: string | null
   at: number
+  params: Record<string, string>
 }

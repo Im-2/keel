@@ -9,6 +9,7 @@ import { chainFor } from "@keel/shared"
 import { api, tg, type AppConfig } from "./lib/api"
 import { App } from "./App"
 import { inTelegram, readHandoffFromUrl } from "./lib/telegram"
+import { scopeStorageToUser } from "./lib/session"
 import "./styles.css"
 
 tg?.ready()
@@ -23,6 +24,8 @@ try {
 }
 
 readHandoffFromUrl()
+// before wagmi restores any stored connection: it must belong to this Telegram account
+scopeStorageToUser(tg?.initDataUnsafe.user?.id)
 
 const root = createRoot(document.getElementById("root")!)
 

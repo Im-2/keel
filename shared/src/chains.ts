@@ -37,3 +37,6 @@ export const explorerTx = (network: NetworkName, hash: string) =>
   `${chainFor(network).blockExplorers.default.url}/tx/${hash}`
 export const explorerAddress = (network: NetworkName, addr: string) =>
   `${chainFor(network).blockExplorers.default.url}/address/${addr}`
+
+/** Where to get test BTC; null on mainnet. */
+export const faucetUrl = (network: NetworkName) => (network === "testnet" ? "https://faucet.test.mezo.org" : null)

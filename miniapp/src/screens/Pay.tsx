@@ -33,7 +33,10 @@ export function Pay(_: { ctx: AppCtx }) {
     setNotOnKeel(false)
     try {
       if (kind === "send") await startIntent({ type: "send", to: to.trim(), amount: wei.toString(), memo })
-      else await startIntent({ type: "create_claim", amount: wei.toString(), forName: to.trim().startsWith("@") ? to.trim() : undefined })
+      else {
+        const name = to.trim().replace(/^@/, "")
+        await startIntent({ type: "create_claim", amount: wei.toString(), forName: /^[A-Za-z0-9_]{3,32}$/.test(name) ? "@" + name : undefined })
+      }
     } catch (e) {
       if (e instanceof ApiError && e.status === 404) setNotOnKeel(true)
       setErr(shortError(e))
@@ -61,7 +64,7 @@ export function Pay(_: { ctx: AppCtx }) {
         )}
         {err && <Notice tone={notOnKeel ? "info" : "danger"}>{err}</Notice>}
         {notOnKeel ? (
-          <Button busy={busy} onClick={() => { setMode("link"); void submit("link") }}>Send a claim link instead</Button>
+          <Button busy={busy} onClick={() => { setMode("link"); void submit("link") }}>Create claim link</Button>
         ) : (
           <Button busy={busy} disabled={!wei || (mode === "send" && !to.trim())} onClick={() => submit(mode)}>Review & sign</Button>
         )}

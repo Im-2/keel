@@ -20,11 +20,12 @@ export function Borrow({ ctx }: { ctx: AppCtx }) {
   return (
     <>
       <Header title={mode === "borrow" ? "Borrow" : mode === "repay" ? "Repay" : "Add collateral"} greeting="Your loan" />
+      {pos.data?.trove && <LoanSummary />}
       <Segmented<Mode> value={mode} onChange={setMode} options={[["borrow", "Borrow"], ["repay", "Repay"], ["collateral", "Collateral"]]} />
       {!pos.data ? (
         <Glass><Skeleton h={120} /></Glass>
       ) : mode === "borrow" ? (
-        hasLoan ? <Glass><p className="muted">You already have a loan open. Repay or add collateral to manage it.</p></Glass> : <BorrowForm />
+        hasLoan ? <Glass><p className="muted">Your loan is shown above. Mezo allows one loan per wallet: repay or add collateral to manage it.</p></Glass> : <BorrowForm />
       ) : !hasLoan ? (
         <Glass><p className="muted">No open loan yet. Start one on the Borrow tab.</p><Button variant="ghost" onClick={() => setMode("borrow")}>Borrow</Button></Glass>
       ) : mode === "repay" ? (
@@ -66,19 +67,24 @@ function BorrowForm() {
     return Math.max(0, Math.floor((total - 200) / (1 + num(big(sys.borrowingRate)))))
   }, [btc, price, ratio])
   const [amount, setAmount] = useState(minNet)
-  const sliderMax = Math.max(minNet, Math.min(maxBorrow, 50_000))
+  // the slider only offers what this wallet can actually lock; below the protocol minimum it can't open a loan at all
+  const affordable = maxBorrow >= minNet
+  const sliderMax = affordable ? Math.max(minNet, Math.floor(Math.min(maxBorrow, 50_000) / 50) * 50) : minNet
   const amt = Math.min(Math.max(amount, minNet), sliderMax)
-  const q = quoteBorrow({ borrowAmount: toBig(amt), price, borrowingRate: big(sys.borrowingRate), interestRateBps: sys.interestRateBps, minNetDebt: big(sys.minNetDebt), targetIcr: pct(ratio), recoveryMode: sys.recoveryMode })
+  const quote = (musd: number) => quoteBorrow({ borrowAmount: toBig(musd), price, borrowingRate: big(sys.borrowingRate), interestRateBps: sys.interestRateBps, minNetDebt: big(sys.minNetDebt), targetIcr: pct(ratio), recoveryMode: sys.recoveryMode })
+  const q = quote(amt)
   const need = q.collateral + GAS_BUFFER
   const short = btc < need
+  const moreBtc = short ? need - btc : 0n
   const { busy, err, submit } = useSubmit()
   return (
     <>
       <Glass orb="gold" className="quote-hero">
+        <span className="preview-pill">Preview · you don't have a loan yet</span>
         <span className="label">You receive</span>
         <strong className="huge">{fmtMusd(toBig(amt), 0)}</strong>
         <Slider value={amt} min={minNet} max={sliderMax} step={50} onChange={setAmount} format={(v) => `${v} MUSD`} />
-        <div className="row-between"><small className="muted">min {minNet.toLocaleString()}</small><small className="muted">max {sliderMax.toLocaleString()}</small></div>
+        <div className="row-between"><small className="muted">min {minNet.toLocaleString()}</small><small className="muted">{affordable ? `max ${sliderMax.toLocaleString()} for your ${fmtBtc(btc, 4)}` : "your wallet can't cover the minimum yet"}</small></div>
         <span className="label" style={{ marginTop: 18 }}>Safety ratio · {ratio}%</span>
         <Slider value={ratio} min={120} max={300} step={5} onChange={setRatio} marks={[[150, "150%"], [200, "200%"]]} />
       </Glass>
@@ -100,7 +106,7 @@ function BorrowForm() {
         ]} />
         {q.warnings.map((w) => <Notice key={w}>{w}</Notice>)}
         {short ? (
-          <Notice tone="danger">Not enough BTC: you need about {fmtBtc(need, 4)} ({fmtBtc(q.collateral, 4)} collateral + {fmtBtc(GAS_BUFFER, 3)} for fees). Your wallet has {fmtBtc(btc, 4)}. Get testnet BTC from the Mezo faucet, or lower the ratio.</Notice>
+          <Notice tone="danger">You need {fmtBtc(moreBtc, 5)} more. This loan locks {fmtBtc(q.collateral, 4)} plus {fmtBtc(GAS_BUFFER, 3)} for fees; your wallet has {fmtBtc(btc, 4)}. Get testnet BTC from the Mezo faucet{ratio > 120 ? ", or lower the ratio" : ""}.</Notice>
         ) : (
           <p className="muted small">After this you'll have about {fmtBtc(btc - q.collateral, 4)} left. Keep ~{fmtBtc(SUGGESTED_RESERVE, 3)} for your guardian reserve.</p>
         )}
@@ -176,6 +182,24 @@ function CollateralForm() {
       {cap === 0n && <Notice tone="danger">Your wallet needs more than {fmtBtc(GAS_BUFFER, 3)} BTC (kept for fees). Get testnet BTC from the Mezo faucet.</Notice>}
       {err && <Notice tone="danger">{err}</Notice>}
       <Button busy={busy} disabled={amount === 0n} onClick={() => submit({ type: "add_collateral", amount: amount.toString() })}>Review & sign</Button>
+    </Glass>
+  )
+}
+
+/** The loan this wallet actually has, read from the chain (never a quote). */
+function LoanSummary() {
+  const p = usePosition().data!
+  const t = p.trove!
+  const price = big(p.system!.price)
+  return (
+    <Glass className="loan-summary">
+      <div className="section-head"><h3>Your loan</h3><span className="muted tiny">on-chain</span></div>
+      <Rows rows={[
+        ["Collateral", `${fmtBtc(big(t.coll), 5)} (≈ ${fmtUsd((big(t.coll) * price) / E18, 0)})`],
+        ["Debt", fmtMusd(big(t.debt), 2)],
+        ["Safety ratio", fmtIcr(big(t.icr))],
+        ["Liquidation price", fmtUsd(big(t.liqPrice), 0)],
+      ]} />
     </Glass>
   )
 }

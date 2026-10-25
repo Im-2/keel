@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { useQueryClient } from "@tanstack/react-query"
-import { api } from "../lib/api"
+import { ApiError, api } from "../lib/api"
 import { go } from "../lib/data"
 import { handoffToken, inTelegram } from "../lib/telegram"
 import { short } from "../lib/units"
@@ -12,6 +12,7 @@ export function Link({ ctx }: { ctx: AppCtx }) {
   const qc = useQueryClient()
   const [state, setState] = useState<"idle" | "signing" | "done">("idle")
   const [err, setErr] = useState("")
+  const [inUse, setInUse] = useState(false)
   if (state === "done") {
     return (
       <StateView
@@ -34,26 +35,33 @@ export function Link({ ctx }: { ctx: AppCtx }) {
           <Glass orb="gold" className="connect">
             <h2>One signature to link</h2>
             <p className="muted small center-text">Proves <b className="mono">{short(account)}</b> is yours. It's free and moves no funds.</p>
-            {err && <Notice tone="danger">{err}</Notice>}
+            {inUse ? (
+              <Notice tone="warn">This wallet is linked to a different Telegram account. Linking it here unlinks it there (that account is told). Sign once more to confirm.</Notice>
+            ) : err ? (
+              <Notice tone="danger">{err}</Notice>
+            ) : null}
             <Button
               busy={state === "signing"}
               onClick={async () => {
                 setState("signing")
                 setErr("")
                 try {
+                  // a fresh nonce and signature every time, including the takeover confirmation
                   const { nonce, message } = await api.nonce()
                   const signature = await wallet.signMessage({ account, message })
-                  await api.bind({ nonce, address: account, signature })
+                  await api.bind({ nonce, address: account, signature, ...(inUse ? { takeover: true } : {}) })
                   haptic("success")
+                  setInUse(false)
                   void qc.invalidateQueries({ queryKey: ["position"] })
                   setState("done")
                 } catch (e) {
-                  setErr(shortError(e))
+                  if (e instanceof ApiError && e.code === "wallet_in_use") setInUse(true)
+                  else setErr(shortError(e))
                   setState("idle")
                 }
               }}
             >
-              {state === "signing" ? "Waiting for signature…" : "Sign & link"}
+              {state === "signing" ? "Waiting for signature…" : inUse ? "Sign again & link here" : "Sign & link"}
             </Button>
             {state === "signing" && <SigningWith />}
             <div className="center"><MezoBadge /></div>

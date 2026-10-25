@@ -8,7 +8,7 @@ const position = {
   linked: true,
   address: "0x5C22A7612D3B67C68bA84873F16C01bc06041ADD",
   user: { firstName: "Ada", username: "ada" },
-  wallet: { btc: s(0.0071) },
+  wallet: { btc: s(0.0071), musd: s(1775.5) },
   kind: "guardian",
   guardianAddress: "0x277BD894778744cc687C9848B0c59772Ad021AFf",
   trove: { coll: s(0.04439), debt: s(2001.8), icr: s(1.799), liqPrice: s(49613), bufferBps: 3887, risk: "watch", interestRateBps: 100 },
@@ -17,13 +17,18 @@ const position = {
   system: { price: s(81168), tcr: s(2.917), recoveryMode: false, minNetDebt: (1800n * E).toString(), borrowingRate: (E / 1000n).toString(), interestRateBps: 100 },
 }
 const prices: Array<[number, number]> = Array.from({ length: 42 }, (_, i) => [Date.now() - (41 - i) * 4 * 3600_000, 78000 + Math.sin(i / 5) * 1800 + i * 80])
+const row = (id: string, type: string, amount: bigint | null, extra: Record<string, unknown> = {}) => ({
+  id, type, status: "confirmed", amount: amount?.toString() ?? null, asset: "MUSD", counterparty: null, memo: null, tx: `0x${id.padEnd(64, "0")}`, at: now - 600, params: {}, ...extra,
+})
 const activity = {
+  more: false,
   items: [
-    { id: "p1", type: "protected", params: { btcAdded: s(0.00494), musdRepaid: "0", icrBefore: s(1.599), icrAfter: s(1.799) }, tx: "0x297323edc0a2000ec4137fe0fd521fbe9f78ea651511e0bbaf6ce967f8a35c2e", at: now - 600 },
-    { id: "a2", type: "protect_config", params: { enabled: "true", minIcr: s(1.7), targetIcr: s(1.8) }, tx: null, at: now - 700 },
-    { id: "a3", type: "borrow", params: { amount: (1800n * E).toString() }, tx: null, at: now - 900 },
-    { id: "a4", type: "send", params: { amount: (25n * E).toString(), label: "@bob", memo: "Lunch" }, tx: null, at: now - 86400 },
-    { id: "a5", type: "fund_reserve", params: { amount: s(0.005) }, tx: null, at: now - 90000 },
+    row("r1", "received", 15n * E, { counterparty: "@bob", memo: "Pizza", at: now - 120 }),
+    row("p1", "protected", BigInt(s(0.00494)), { asset: "BTC", params: { btcAdded: s(0.00494), musdRepaid: "0", icrBefore: s(1.599), icrAfter: s(1.799) }, at: now - 600 }),
+    row("a2", "protect_config", null, { asset: null, params: { enabled: "true", minIcr: s(1.7), targetIcr: s(1.8) }, at: now - 700 }),
+    row("a3", "borrow", 1800n * E, { at: now - 900 }),
+    row("a4", "send", 25n * E, { counterparty: "@bob", memo: "Lunch", at: now - 86400 }),
+    row("a5", "fund_reserve", BigInt(s(0.005)), { asset: "BTC", at: now - 90000 }),
   ],
 }
 const intents: Record<string, unknown> = {
@@ -41,6 +46,26 @@ export function installMock() {
       get: (t, k) => (k === "initData" ? "mock=1" : k === "openLink" ? (url: string) => void w.__opened.push(url) : Reflect.get(t, k)),
     })
   }
+  // a fake event stream: window.__live({ reason: "received", toast: "Received 5 MUSD from @bob" }) pushes an update,
+  // window.__liveDrop() simulates the stream dropping (the client reconnects with backoff, polling meanwhile)
+  const w2 = window as unknown as Record<string, unknown>
+  const streams = new Set<{ emit: (d: unknown) => void; fail: () => void }>()
+  let seq = 0
+  w2.__live = (u: Record<string, unknown>) => streams.forEach((st) => st.emit({ id: ++seq, ...u }))
+  w2.__liveDrop = () => streams.forEach((st) => st.fail())
+  w2.__mutate = (fn: (p: typeof position, a: typeof activity) => void) => fn(position, activity)
+  w2.EventSource = class {
+    onopen: ((e: unknown) => void) | null = null
+    onerror: ((e: unknown) => void) | null = null
+    private ls: Array<(e: { data: string }) => void> = []
+    private me = { emit: (d: unknown) => this.ls.forEach((l) => l({ data: JSON.stringify(d) })), fail: () => this.onerror?.({}) }
+    constructor() {
+      streams.add(this.me)
+      setTimeout(() => this.me.emit({ reason: "hello", id: 0 }), 300)
+    }
+    addEventListener(_t: string, fn: (e: { data: string }) => void) { this.ls.push(fn) }
+    close() { streams.delete(this.me) }
+  }
   const real = window.fetch.bind(window)
   window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input)
@@ -50,13 +75,14 @@ export function installMock() {
     await new Promise((r) => setTimeout(r, 350))
     if (path === "/api/config") return real(input, init) // real chain config from the running bot
     const q = new URLSearchParams(location.search)
-    if (path === "/api/position") return json(q.has("unlinked") ? { linked: false, user: { firstName: "Ada", username: "ada" } } : q.has("noloan") ? { ...position, wallet: { btc: s(0.05) }, trove: null, redemption: null, guardian: null } : q.has("risk") ? { ...position, trove: { ...position.trove, icr: s(1.18), liqPrice: s(75600), bufferBps: 690, risk: "danger" } } : q.has("watch") ? { ...position, trove: { ...position.trove, icr: s(1.39) } } : position)
+    if (path === "/api/position") return json(q.has("unlinked") ? { linked: false, user: { firstName: "Ada", username: "ada" } } : q.has("noloan") ? { ...position, wallet: { btc: q.has("empty") ? "0" : s(0.05), musd: "0" }, trove: null, redemption: null, guardian: null } : q.has("risk") ? { ...position, trove: { ...position.trove, icr: s(1.18), liqPrice: s(75600), bufferBps: 690, risk: "danger" } } : q.has("watch") ? { ...position, trove: { ...position.trove, icr: s(1.39) } } : position)
     if (path === "/api/market") return json({ source: "mock", prices, oracle: 81168 })
     if (path === "/api/activity") return json(activity)
     if (path.startsWith("/api/intent/")) return json(intents[path.split("/")[3]] ?? { error: "not found" }, intents[path.split("/")[3]] ? 200 : 404)
     if (path === "/api/intent") return json({ error: "Preview mode: signing is disabled." }, 400)
     if (path.startsWith("/api/claim/")) return json({ sender: position.address, amount: (50n * E).toString(), expiry: now + 3600, settled: false })
     if (path === "/api/handoff") return json({ token: "tok123", expires: now + 600, url: `${location.origin}/?w=tok123&r=link` })
+    if (path === "/api/live/token") return json({ token: "mock", url: "/api/live" })
     if (path === "/api/premium") return json({ active: false, until: 0, priceMusd: "1", days: 30 })
     return json({ error: "mock: no route" }, 404)
   }

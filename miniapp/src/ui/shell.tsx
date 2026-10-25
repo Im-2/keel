@@ -3,6 +3,8 @@ import { tg } from "../lib/api"
 import { go } from "../lib/data"
 import { IconActivity, IconBack, IconBorrow, IconHome, IconSend, IconShield } from "./icons"
 import { Avatar, KeelMark } from "./kit"
+import { LiveDot } from "./live"
+import { liveEnabled } from "../lib/useLive"
 
 export const TABS = ["", "borrow", "pay", "protect", "activity"] as const
 export type Tab = (typeof TABS)[number]
@@ -42,6 +44,7 @@ export function Header({ title, greeting, back }: { title: string; greeting?: st
         {greeting && <span className="greet">{greeting}</span>}
         <h1>{title}</h1>
       </div>
+      {liveEnabled() && <LiveDot />}
       <button className="avatar-btn" onClick={() => go("/profile")} aria-label="Profile and wallet settings">
         <Avatar name={u?.first_name ?? "K"} photo={u?.photo_url} />
       </button>

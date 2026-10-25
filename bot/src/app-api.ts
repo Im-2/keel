@@ -1,8 +1,11 @@
 import type { Context, Hono, MiddlewareHandler } from "hono"
-import { isAddress, type Address } from "viem"
+import type { Address } from "viem"
 import { E18, pct, type SystemState } from "@keel/shared"
 import type { ChainService, UserView } from "./chain"
 import type { IntentType, Store, UserRow } from "./db"
+import type { History } from "./history"
+import type { LiveBus } from "./live"
+import { resolveRecipient, NOT_ON_KEEL } from "./recipient"
 
 /** Routes the redesigned Mini App uses to start actions itself and to draw the dashboard. */
 export interface AppRouteDeps {
@@ -12,6 +15,8 @@ export interface AppRouteDeps {
   userOf: (c: Context) => UserRow
   /** BTC/USD history for sparklines; injectable for tests. */
   priceHistory?: () => Promise<Array<[number, number]>>
+  history: History
+  live?: LiveBus
 }
 
 const uint = (v: unknown) => (typeof v === "string" && /^\d{1,40}$/.test(v) ? BigInt(v) : null)
@@ -65,8 +70,8 @@ export function mountAppRoutes(app: Hono<any>, d: AppRouteDeps) {
     const sys = await chain.system()
     recordPrice(store, sys.price)
     if (!u.address) return c.json({ linked: false, user: { firstName: u.first_name, username: u.username } })
-    const [view, btc] = await Promise.all([chain.view(u.address as Address), chain.balance(u.address as Address)])
-    return c.json({ linked: true, address: u.address, user: { firstName: u.first_name, username: u.username }, wallet: { btc: s(btc) }, ...serializeView(view, sys) })
+    const [view, btc, musd] = await Promise.all([chain.view(u.address as Address), chain.balance(u.address as Address), chain.musdBalance(u.address as Address)])
+    return c.json({ linked: true, address: u.address, user: { firstName: u.first_name, username: u.username }, wallet: { btc: s(btc), musd: s(musd) }, ...serializeView(view, sys) })
   })
 
   app.get("/api/market", async (c) => {
@@ -83,30 +88,13 @@ export function mountAppRoutes(app: Hono<any>, d: AppRouteDeps) {
     return c.json({ source, prices, oracle: Number(sys.price / (E18 / 100n)) / 100 })
   })
 
+  // Same feed as /history in chat: intents plus the on-chain ledger (received transfers, claims, protections).
   app.get("/api/activity", async (c) => {
     const u = userOf(c)
-    const rows = store.listIntents(u.tg_id, 30).filter((i) => i.status === "done")
-    const items: Array<{ id: string; type: string; params: Record<string, unknown>; tx: string | null; at: number }> = rows.map((i) => ({ id: i.id, type: i.type, params: i.params, tx: i.tx_hash, at: i.created_at }))
-    // keeper protections are not intents: read them from the guardian's recent logs (best effort, RPCs cap log ranges)
-    if (u.address) {
-      try {
-        const v = await chain.view(u.address as Address)
-        if (v.guardianAddress) {
-          const head = await chain.blockNumber()
-          const span = 9_000n
-          for (let to = head, k = 0; k < 3 && to > 0n; k++, to -= span + 1n) {
-            const from = to > span ? to - span : 0n
-            for (const e of await chain.protectedEvents([v.guardianAddress], from, to)) {
-              items.push({ id: e.tx, type: "protected", params: { btcAdded: e.btcAdded.toString(), musdRepaid: e.musdRepaid.toString(), icrBefore: e.icrBefore.toString(), icrAfter: e.icrAfter.toString() }, tx: e.tx, at: e.block ? await chain.blockTime(e.block) : 0 })
-            }
-          }
-        }
-      } catch {
-        /* activity still works from intents */
-      }
-    }
-    items.sort((a, b) => b.at - a.at)
-    return c.json({ items })
+    const limit = Number(c.req.query("limit") ?? 30)
+    const offset = Number(c.req.query("offset") ?? 0)
+    const feed = await d.history.feed(u, { limit: Number.isFinite(limit) ? limit : 30, offset: Number.isFinite(offset) ? offset : 0 })
+    return c.json(feed)
   })
 
   // Start an action from the Mini App. Same intent rows the bot creates, so signing, completion
@@ -145,17 +133,12 @@ export function mountAppRoutes(app: Hono<any>, d: AppRouteDeps) {
       }
       case "send": {
         if (!amount) return c.json({ error: "Enter an amount." }, 400)
-        const to = typeof b.to === "string" ? b.to.trim() : ""
         const memo = typeof b.memo === "string" ? b.memo.slice(0, 120) : ""
-        if (isAddress(to)) {
-          params = { to, amount: amount.toString(), label: `${to.slice(0, 8)}…`, memo }
-        } else if (/^@?[A-Za-z0-9_]{3,32}$/.test(to)) {
-          const target = store.findByUsername(to)
-          if (!target?.address) return c.json({ error: `@${to.replace(/^@/, "")} isn't on Keel yet. Send a claim link instead.`, code: "not_on_keel" }, 404)
-          params = { to: target.address, amount: amount.toString(), label: "@" + target.username, toTg: target.tg_id, memo }
-        } else {
-          return c.json({ error: "Use @username or a 0x address." }, 400)
-        }
+        const r = resolveRecipient(store, u, typeof b.to === "string" ? b.to : "")
+        if (r.kind === "invalid") return c.json({ error: r.error }, 400)
+        if (r.kind === "self") return c.json({ error: "That's your own wallet." }, 400)
+        if (r.kind === "unlinked") return c.json({ error: `@${r.username}: ${NOT_ON_KEEL}.`, code: "not_on_keel", username: r.username }, 404)
+        params = { to: r.address, amount: amount.toString(), label: r.label, ...(r.user ? { toTg: r.user.tg_id } : {}), memo }
         break
       }
       case "create_claim": {

@@ -1,7 +1,7 @@
 import { Bot } from "grammy"
 import { E18, pct, type SystemState, type TroveState, type GuardianState } from "@keel/shared"
 import type { Address } from "viem"
-import type { ChainService, UserView, ProtectedEvent, TransferEvent } from "../src/chain"
+import type { ChainService, UserView, ProtectedEvent, TransferEvent, PayEvent } from "../src/chain"
 import type { Config } from "../src/config"
 import { createBot } from "../src/bot"
 import { Store } from "../src/db"
@@ -37,7 +37,8 @@ export class FakeChain implements ChainService {
   head = 100n
   protectedLogs: ProtectedEvent[] = []
   transfers: TransferEvent[] = []
-  receipts = new Map<string, { ok: boolean; from: Address }>()
+  receipts = new Map<string, { ok: boolean; from: Address; status?: "success" | "reverted"; block?: bigint }>()
+  payLogs: PayEvent[] = []
   async system() { return this.sysState }
   async view(a: Address): Promise<UserView> {
     return this.views.get(a.toLowerCase()) ?? { kind: "none", address: a, troveOwner: null, trove: null, guardian: null, guardianAddress: null, redemption: null }
@@ -47,10 +48,21 @@ export class FakeChain implements ChainService {
   async blockNumber() { return this.head }
   btc = 10n * E18
   async balance() { return this.btc }
+  musd = new Map<string, bigint>()
+  async musdBalance(a: Address) { return this.musd.get(a.toLowerCase()) ?? 0n }
+  guardians = new Map<string, Address>()
+  async guardianOf(a: Address) { return this.guardians.get(a.toLowerCase()) ?? this.views.get(a.toLowerCase())?.guardianAddress ?? null }
   async blockTime() { return 1_700_000_000 }
-  async receipt(h: string) { return this.receipts.get(h) ?? null }
-  async protectedEvents() { return this.protectedLogs }
-  async incomingTransfers() { return this.transfers }
+  async receipt(h: string) {
+    const r = this.receipts.get(h)
+    return r ? { status: r.ok ? ("success" as const) : ("reverted" as const), block: this.head, ...r } : null
+  }
+  async protectedEvents(_g: Address[], from: bigint, to: bigint) { return this.protectedLogs.filter((e) => e.block === undefined || (e.block >= from && e.block <= to)) }
+  async musdTransfers(addrs: Address[], from: bigint, to: bigint) {
+    const set = new Set(addrs.map((a) => a.toLowerCase()))
+    return this.transfers.filter((t) => t.block >= from && t.block <= to && (set.has(t.to.toLowerCase()) || set.has(t.from.toLowerCase())))
+  }
+  async payEvents(from: bigint, to: bigint) { return this.payLogs.filter((e) => e.block >= from && e.block <= to) }
   setView(a: Address, v: Partial<UserView>) {
     this.views.set(a.toLowerCase(), { kind: "guardian", address: a, troveOwner: GUARDIAN, trove: null, guardian: null, guardianAddress: GUARDIAN, redemption: null, ...v })
   }
@@ -58,7 +70,13 @@ export class FakeChain implements ChainService {
 
 export class FakeNotifier implements Notifier {
   sent: Array<{ to: number; text: string; opts?: NotifyOpts }> = []
-  async send(to: number, text: string, opts?: NotifyOpts) { this.sent.push({ to, text, opts }) }
+  /** People Telegram refuses to deliver to (never started the bot, or blocked it). */
+  unreachable = new Set<number>()
+  async send(to: number, text: string, opts?: NotifyOpts) {
+    if (this.unreachable.has(to)) return false
+    this.sent.push({ to, text, opts })
+    return true
+  }
 }
 
 export interface ApiCall { method: string; payload: Record<string, unknown> }

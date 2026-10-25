@@ -1,4 +1,4 @@
-import { parseAbiItem, type Address } from "viem"
+import { erc20Abi, parseAbiItem, type Address } from "viem"
 import {
   findGuardian, makeClient, readGuardian, readSystem, readTrove, redemptionAhead, scanTroves,
   keelGuardianFactoryAbi,
@@ -24,20 +24,34 @@ export interface ChainService {
   guardianCount(): Promise<number>
   blockNumber(): Promise<bigint>
   balance(address: Address): Promise<bigint>
+  /** MUSD held by the wallet itself (not the loan). */
+  musdBalance(address: Address): Promise<bigint>
+  /** The wallet's guardian contract, if it has one. */
+  guardianOf(address: Address): Promise<Address | null>
   blockTime(block: bigint): Promise<number>
-  /** Receipt summary for completion checks; null if not mined yet. */
-  receipt(hash: string): Promise<{ ok: boolean; from: Address } | null>
+  /**
+   * Receipt summary for completion checks; null if no node has it yet. `ok` is true only for a successful
+   * (not reverted) transaction. Public RPC nodes lag each other, so a miss is retried before giving up.
+   */
+  receipt(hash: string): Promise<Receipt | null>
   /** Keeper `Protected` events emitted by the given guardians in [from, to]. */
   protectedEvents(guardians: Address[], from: bigint, to: bigint): Promise<ProtectedEvent[]>
-  /** MUSD transfers received by the given addresses in [from, to]. */
-  incomingTransfers(addresses: Address[], from: bigint, to: bigint): Promise<TransferEvent[]>
+  /** MUSD transfers sent or received by the given addresses in [from, to]. */
+  musdTransfers(addresses: Address[], from: bigint, to: bigint): Promise<TransferEvent[]>
+  /** KeelPay claim-link events in [from, to]. */
+  payEvents(from: bigint, to: bigint): Promise<PayEvent[]>
 }
 
-export interface ProtectedEvent { guardian: Address; btcAdded: bigint; musdRepaid: bigint; icrBefore: bigint; icrAfter: bigint; tx: string; block?: bigint }
-export interface TransferEvent { from: Address; to: Address; value: bigint; tx: string }
+export interface Receipt { ok: boolean; status: "success" | "reverted"; from: Address; block: bigint }
+export interface ProtectedEvent { guardian: Address; btcAdded: bigint; musdRepaid: bigint; icrBefore: bigint; icrAfter: bigint; tx: string; block?: bigint; logIndex?: number }
+export interface TransferEvent { from: Address; to: Address; value: bigint; tx: string; block: bigint; logIndex: number }
+export interface PayEvent { kind: "created" | "claimed" | "cancelled"; link: Address; sender?: Address; to?: Address; amount: bigint; tx: string; block: bigint; logIndex: number }
 
 const protectedEvent = parseAbiItem("event Protected(address indexed keeper, uint8 action, uint256 btcAdded, uint256 musdRepaid, uint256 icrBefore, uint256 icrAfter, uint256 tipBTC, uint256 tipMUSD)")
 const transferEvent = parseAbiItem("event Transfer(address indexed from, address indexed to, uint256 value)")
+const linkCreated = parseAbiItem("event LinkCreated(address indexed link, address indexed sender, uint256 amount, uint64 expiry)")
+const linkClaimed = parseAbiItem("event LinkClaimed(address indexed link, address indexed to, uint256 amount, address relayer)")
+const linkCancelled = parseAbiItem("event LinkCancelled(address indexed link, address indexed sender, uint256 amount)")
 
 export class LiveChain implements ChainService {
   client: Client
@@ -106,12 +120,27 @@ export class LiveChain implements ChainService {
     return this.client.getBlockNumber()
   }
 
+  private times = new Map<bigint, number>()
   async blockTime(block: bigint): Promise<number> {
-    return Number((await this.client.getBlock({ blockNumber: block })).timestamp)
+    const hit = this.times.get(block)
+    if (hit) return hit
+    const t = Number((await this.client.getBlock({ blockNumber: block })).timestamp)
+    if (this.times.size > 5000) this.times.clear()
+    this.times.set(block, t)
+    return t
   }
 
   balance(address: Address): Promise<bigint> {
     return this.client.getBalance({ address })
+  }
+
+  musdBalance(address: Address): Promise<bigint> {
+    return this.client.readContract({ address: this.deployment.musd.musd, abi: erc20Abi, functionName: "balanceOf", args: [address] })
+  }
+
+  async guardianOf(address: Address): Promise<Address | null> {
+    if (!this.deployment.keel) return null
+    return (await findGuardian(this.client, this.deployment.keel, address)) ?? null
   }
 
   async protectedEvents(guardians: Address[], from: bigint, to: bigint): Promise<ProtectedEvent[]> {
@@ -119,18 +148,43 @@ export class LiveChain implements ChainService {
     const logs = await this.client.getLogs({ address: guardians, event: protectedEvent, fromBlock: from, toBlock: to })
     return logs.map((l) => ({
       guardian: l.address, btcAdded: l.args.btcAdded!, musdRepaid: l.args.musdRepaid!,
-      icrBefore: l.args.icrBefore!, icrAfter: l.args.icrAfter!, tx: l.transactionHash, block: l.blockNumber,
+      icrBefore: l.args.icrBefore!, icrAfter: l.args.icrAfter!, tx: l.transactionHash, block: l.blockNumber, logIndex: l.logIndex,
     }))
   }
 
-  async incomingTransfers(addresses: Address[], from: bigint, to: bigint): Promise<TransferEvent[]> {
+  async musdTransfers(addresses: Address[], from: bigint, to: bigint): Promise<TransferEvent[]> {
     if (addresses.length === 0 || from > to) return []
-    const logs = await this.client.getLogs({ address: this.deployment.musd.musd, event: transferEvent, args: { to: addresses }, fromBlock: from, toBlock: to })
-    return logs.map((l) => ({ from: l.args.from!, to: l.args.to!, value: l.args.value!, tx: l.transactionHash }))
+    const q = { address: this.deployment.musd.musd, event: transferEvent, fromBlock: from, toBlock: to } as const
+    const [incoming, outgoing] = await Promise.all([this.client.getLogs({ ...q, args: { to: addresses } }), this.client.getLogs({ ...q, args: { from: addresses } })])
+    const seen = new Set<string>()
+    const out: TransferEvent[] = []
+    for (const l of [...incoming, ...outgoing]) {
+      const k = `${l.transactionHash}:${l.logIndex}`
+      if (seen.has(k)) continue
+      seen.add(k)
+      out.push({ from: l.args.from!, to: l.args.to!, value: l.args.value!, tx: l.transactionHash, block: l.blockNumber, logIndex: l.logIndex })
+    }
+    return out
   }
 
-  async receipt(hash: string): Promise<{ ok: boolean; from: Address } | null> {
-    const rc = await this.client.getTransactionReceipt({ hash: hash as `0x${string}` }).catch(() => null)
-    return rc ? { ok: rc.status === "success", from: rc.from } : null
+  async payEvents(from: bigint, to: bigint): Promise<PayEvent[]> {
+    const pay = this.deployment.keel?.pay
+    if (!pay || from > to) return []
+    const logs = await this.client.getLogs({ address: pay, events: [linkCreated, linkClaimed, linkCancelled], fromBlock: from, toBlock: to })
+    return logs.map((l) => {
+      const base = { link: l.args.link!, amount: l.args.amount!, tx: l.transactionHash, block: l.blockNumber, logIndex: l.logIndex }
+      if (l.eventName === "LinkCreated") return { ...base, kind: "created" as const, sender: l.args.sender }
+      if (l.eventName === "LinkClaimed") return { ...base, kind: "claimed" as const, to: l.args.to }
+      return { ...base, kind: "cancelled" as const, sender: (l.args as { sender?: Address }).sender }
+    })
+  }
+
+  async receipt(hash: string, tries = 5): Promise<Receipt | null> {
+    for (let i = 0; i < tries; i++) {
+      const rc = await this.client.getTransactionReceipt({ hash: hash as `0x${string}` }).catch(() => null)
+      if (rc) return { ok: rc.status === "success", status: rc.status, from: rc.from, block: rc.blockNumber }
+      if (i < tries - 1) await new Promise((r) => setTimeout(r, 600 * (i + 1)))
+    }
+    return null
   }
 }

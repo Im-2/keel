@@ -44,7 +44,6 @@ export class AlertEngine {
     }
     // Recovery Mode is global state: only on full ticks, so free users are never skipped
     if (full) await this.recoveryMode(users, views, sys.recoveryMode, sys.tcr)
-    if (full) await this.eventAlerts(users, views)
   }
 
   /**
@@ -163,42 +162,6 @@ export class AlertEngine {
       } else if (flagged && v.redemption.ahead > (limit * 5n) / 4n) {
         store.setAlert(u.tg_id, "redemption", "0")
       }
-    }
-  }
-
-  private async eventAlerts(users: UserRow[], views: Map<number, UserView>) {
-    const { store, chain, notifier, config } = this.d
-    const head = await chain.blockNumber()
-    const last = store.getKv("alerts_block")
-    store.setKv("alerts_block", head.toString())
-    if (last === null) return
-    const from = BigInt(last) + 1n
-    if (from > head) return
-
-    const byGuardian = new Map<string, UserRow>()
-    const byWallet = new Map<string, UserRow>()
-    for (const u of users) {
-      const g = views.get(u.tg_id)?.guardianAddress
-      if (g) byGuardian.set(g.toLowerCase(), u)
-      byWallet.set(u.address!.toLowerCase(), u)
-    }
-    for (const e of await chain.protectedEvents([...byGuardian.keys()] as Address[], from, head)) {
-      const u = byGuardian.get(e.guardian.toLowerCase())
-      if (!u) continue
-      store.setKv("stat:protections", String(Number(store.getKv("stat:protections") ?? "0") + 1))
-      if (u.settings.muted) continue
-      const did = [e.btcAdded > 0n ? `added ${fmtBtc(e.btcAdded, 5)}` : "", e.musdRepaid > 0n ? `repaid ${fmtMusd(e.musdRepaid, 2)}` : ""].filter(Boolean).join(" and ")
-      await notifier.send(u.tg_id, `🛡 <b>Guardian protected your loan</b>: ${did} from your reserve.\nRatio ${fmtIcr(e.icrBefore)} → <b>${fmtIcr(e.icrAfter)}</b>.`, {
-        buttonText: "View transaction",
-        buttonUrl: explorerTx(config.network, e.tx),
-      })
-    }
-    for (const e of await chain.incomingTransfers([...byWallet.keys()] as Address[], from, head)) {
-      const u = byWallet.get(e.to.toLowerCase())
-      if (!u || u.settings.muted || e.value === 0n) continue
-      const s = store.findByAddress(e.from)
-      const who = s ? (s.username ? "@" + s.username : s.first_name ?? "a Keel user") : `${e.from.slice(0, 8)}…`
-      await notifier.send(u.tg_id, `💸 You received <b>${fmtMusd(e.value, 2)}</b> from ${who}.`, { buttonText: "View transaction", buttonUrl: explorerTx(config.network, e.tx) })
     }
   }
 }

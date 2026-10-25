@@ -42,6 +42,7 @@ export function mountPremium(app: Hono<any>, d: PremiumRouteDeps) {
   const network = `eip155:${d.config.deployment.chainId}` as const
   const server = new x402ResourceServer(new HTTPFacilitatorClient({ url: cfg.facilitatorUrl })).register(network, new ExactEvmScheme())
 
+  app.use("/api/premium", d.auth)
   app.use("/api/premium/*", d.auth)
   app.use(
     paymentMiddleware(

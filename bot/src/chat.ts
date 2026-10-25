@@ -262,6 +262,8 @@ export function mountChat(bot: Bot, d: ChatDeps) {
       case "link_wallet": return actions.linkWallet(ctx, user)
       case "disconnect": return actions.disconnectAsk(ctx, user)
       case "premium": return actions.premium(ctx, user)
+      case "history": return actions.history(ctx, user)
+      case "balance": return actions.balance(ctx, user)
       case "help":
         await actions.help(ctx)
         return void (await ctx.reply("Or just tell me what you want, in your own words.", { reply_markup: suggestions("unknown") }))

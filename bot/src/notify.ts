@@ -23,7 +23,17 @@ export function keyboardOf(opts?: NotifyOpts) {
 
 /** Anything that can deliver a Telegram message. Faked in tests. */
 export interface Notifier {
-  send(tgId: number, html: string, opts?: NotifyOpts): Promise<void>
+  /**
+   * Resolves false only when Telegram says this person can't be reached: they never pressed Start in the bot's
+   * chat, or they blocked it. Other failures are logged and treated as delivered (retrying would spam).
+   */
+  send(tgId: number, html: string, opts?: NotifyOpts): Promise<boolean>
+}
+
+/** Telegram's answer when a bot may not message someone (never started, blocked, deactivated). */
+export const unreachable = (e: unknown) => {
+  const m = (e as { description?: string; message?: string })?.description ?? (e as Error)?.message ?? ""
+  return /bot can't initiate conversation|bot was blocked|chat not found|user is deactivated|Forbidden/i.test(m)
 }
 
 export class TelegramNotifier implements Notifier {
@@ -35,8 +45,32 @@ export class TelegramNotifier implements Notifier {
         link_preview_options: { is_disabled: true },
         reply_markup: keyboardOf(opts),
       })
+      return true
     } catch (e) {
       console.warn(`notify ${tgId} failed:`, (e as Error).message)
+      return !unreachable(e)
     }
   }
+}
+
+/** Minimal store surface for the outbox (kept narrow so tests can use the real Store). */
+interface OutboxStore {
+  queueMessage(tgId: number, html: string, opts: unknown): void
+  takeMessages(tgId: number): Array<{ html: string; opts: unknown }>
+  hasQueued(tgId: number): boolean
+}
+
+/** Send now, or keep the message for when the person next talks to the bot. */
+export async function notifyOrQueue(store: OutboxStore, notifier: Notifier, tgId: number, html: string, opts?: NotifyOpts): Promise<"sent" | "queued"> {
+  if (await notifier.send(tgId, html, opts)) return "sent"
+  store.queueMessage(tgId, html, opts ?? {})
+  return "queued"
+}
+
+/** Deliver everything queued for this person (call on any update from them: they are reachable now). */
+export async function flushOutbox(store: OutboxStore, notifier: Notifier, tgId: number) {
+  if (!store.hasQueued(tgId)) return 0
+  const msgs = store.takeMessages(tgId)
+  for (const m of msgs) await notifier.send(tgId, m.html, m.opts as NotifyOpts)
+  return msgs.length
 }

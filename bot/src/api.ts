@@ -7,11 +7,14 @@ import type { Handoff, IntentRow, Store } from "./db"
 import type { ChainService } from "./chain"
 import type { Notifier } from "./notify"
 import type { ClaimRelayer } from "./relayer"
-import { renderRequest, esc } from "./format"
 import { validateInitData, type InitData } from "./telegram-auth"
-import { payKeyboard } from "./bot"
 import { mountPremium, type Premium } from "./premium"
 import { mountAppRoutes } from "./app-api"
+import { createCompletion, nameOf, type Completion } from "./completion"
+import { esc } from "./format"
+import { notifyOrQueue } from "./notify"
+import { LiveBus, RateLimiter } from "./live"
+import { History } from "./history"
 
 export interface ApiDeps {
   config: Config
@@ -23,6 +26,9 @@ export interface ApiDeps {
   /** Edits a group payment-request message. Wired to bot.api in production. */
   editMessage?: (chatId: number, messageId: number, html: string, replyMarkup?: unknown) => Promise<unknown>
   now?: () => number
+  live?: LiveBus
+  completion?: Completion
+  history?: History
 }
 
 export const bindMessage = (tgId: number, nonce: string) => `Link this wallet to Keel (Telegram account ${tgId}).\nNonce: ${nonce}`
@@ -32,6 +38,9 @@ const HANDOFF_HEADER = "x-keel-handoff"
 
 export function createApi(d: ApiDeps) {
   const { config, store, chain, notifier } = d
+  const live = d.live ?? new LiveBus()
+  const completion = d.completion ?? createCompletion({ config, store, chain, notifier, live, editMessage: d.editMessage })
+  const history = d.history ?? new History({ config, store, chain })
   const app = new Hono<{ Variables: { tg: InitData } }>()
   const miniappOrigin = (() => {
     try {
@@ -41,6 +50,12 @@ export function createApi(d: ApiDeps) {
     }
   })()
   app.use("/api/*", cors({ origin: [miniappOrigin, "http://localhost:5173", "https://localhost:5173"], exposeHeaders: ["*"] }))
+  // Per-user data: never stored by a browser, proxy or CDN, and never served to anyone else from a cache.
+  app.use("/api/*", async (c, next) => {
+    await next()
+    c.res.headers.set("Cache-Control", c.req.path === "/api/live" ? "private, no-store, no-transform" : "private, no-store")
+    c.res.headers.set("Vary", "Origin, x-telegram-init-data, x-keel-handoff")
+  })
 
   app.get("/healthz", (c) => c.json({ ok: true, network: config.network }))
 
@@ -75,13 +90,14 @@ export function createApi(d: ApiDeps) {
       const tx = await d.relayer.claim(body.link, body.to, body.signature as Hex)
       if (info) {
         const senderUser = store.findByAddress(info.sender)
-        if (senderUser && !senderUser.settings.muted) {
-          const claimer = store.findByAddress(body.to)
-          const who = claimer ? (claimer.username ? "@" + claimer.username : claimer.first_name ?? "someone") : `${(body.to as string).slice(0, 8)}…`
-          await notifier.send(senderUser.tg_id, `🎁 Your claim link of <b>${fmtMusd(info.amount, 2)}</b> was claimed by ${esc(who)}.`, {
+        // same dedup key as the block watcher, which sees the LinkClaimed event a few seconds later
+        if (senderUser && store.claimNotice(`lc:${tx.toLowerCase()}`)) {
+          const who = nameOf(store.findByAddress(body.to), body.to)
+          await notifyOrQueue(store, notifier, senderUser.tg_id, `🎁 Your claim link for <b>${fmtMusd(info.amount, 2)}</b> was claimed by <b>${esc(who)}</b>.`, {
             buttonText: "View transaction",
             buttonUrl: explorerTx(config.network, tx),
           })
+          live.publish(senderUser.tg_id, { reason: "link_claimed", tx, toast: `${who} claimed your ${fmtMusd(info.amount, 2)} link` })
         }
       }
       return c.json({ txHash: tx })
@@ -127,8 +143,49 @@ export function createApi(d: ApiDeps) {
     // a handoff carries only the Telegram id: never overwrite the stored name with blanks
     return handoffOf(c) ? (store.getUser(user.id) ?? store.upsertUser(user.id)) : store.upsertUser(user.id, user.username, user.first_name)
   }
-  if (d.premium) mountPremium(app, { config, premium: d.premium, auth: auth as never, tgIdOf: ((c: Context) => tgOf(c).user.id) as never, onGranted: (tgId, until) => notifier.send(tgId, `⭐ <b>Keel Premium is on</b> until ${new Date(until * 1000).toISOString().slice(0, 10)}: your loan is now checked every few seconds instead of minutes.`) })
-  mountAppRoutes(app, { store, chain, auth: auth as never, userOf })
+  if (d.premium) mountPremium(app, { config, premium: d.premium, auth: auth as never, tgIdOf: ((c: Context) => tgOf(c).user.id) as never, onGranted: (tgId, until) => void notifier.send(tgId, `⭐ <b>Keel Premium is on</b> until ${new Date(until * 1000).toISOString().slice(0, 10)}: your loan is now checked every few seconds instead of minutes.`) })
+  mountAppRoutes(app, { store, chain, auth: auth as never, userOf, history, live })
+
+  // ---- live updates: the app trades its Telegram auth for a short-lived token, then opens an EventSource
+  const streamLimit = new RateLimiter(30, 60_000)
+  app.use("/api/live/token", auth)
+  app.post("/api/live/token", (c) => {
+    const u = userOf(c)
+    if (!streamLimit.allow(`tok:${u.tg_id}`)) return c.json({ error: "Too many requests, slow down." }, 429)
+    return c.json({ token: live.issueToken(u.tg_id), url: "/api/live" })
+  })
+  app.get("/api/live", (c) => {
+    const tgId = live.redeem(c.req.query("t") ?? "")
+    if (tgId === null) return c.json({ error: "stream token expired" }, 401)
+    if (live.connections() > 500 || !streamLimit.allow(`sse:${tgId}`)) return c.json({ error: "busy" }, 429)
+    let cleanup = () => {}
+    const body = new ReadableStream({
+      start(ctrl) {
+        const enc = new TextEncoder()
+        const send = (chunk: string) => {
+          try {
+            ctrl.enqueue(enc.encode(chunk))
+          } catch {
+            cleanup()
+          }
+        }
+        // retry hint for EventSource, then a hello so the client knows the stream is really open
+        send("retry: 3000\n\n")
+        send(`event: update\ndata: ${JSON.stringify({ reason: "hello", id: 0 })}\n\n`)
+        const off = live.subscribe(tgId, (e) => send(`id: ${e.id}\nevent: update\ndata: ${JSON.stringify(e)}\n\n`))
+        // comments keep proxies (Render, Telegram's webview) from closing an idle stream
+        const beat = setInterval(() => send(`: ping ${Date.now()}\n\n`), 20_000)
+        cleanup = () => {
+          clearInterval(beat)
+          off()
+        }
+      },
+      cancel() {
+        cleanup()
+      },
+    })
+    return new Response(body, { headers: { "content-type": "text/event-stream", "cache-control": "no-cache, no-transform", connection: "keep-alive", "x-accel-buffering": "no" } })
+  })
   app.use("/api/handoff", auth)
   app.use("/api/me", authOrHandoff)
   app.use("/api/nonce", authOrHandoff)
@@ -183,9 +240,24 @@ export function createApi(d: ApiDeps) {
     if (!store.consumeNonce(body.nonce, u.tg_id)) return c.json({ error: "nonce expired, please try again" }, 400)
     const ok = await verifyMessage({ address: body.address, message: bindMessage(u.tg_id, body.nonce), signature: body.signature as Hex }).catch(() => false)
     if (!ok) return c.json({ error: "signature does not match this wallet" }, 400)
+    // A wallet belongs to one Telegram account. If another account has it, say so only now (after the signature
+    // proved this person controls the wallet), reveal nothing about that account, and require a fresh signature
+    // with an explicit takeover before moving it.
+    const other = store.findByAddress(body.address)
+    if (other && other.tg_id !== u.tg_id) {
+      if (body.takeover !== true) {
+        return c.json({ error: "This wallet is linked to a different Telegram account. Linking it here unlinks it there; sign again to confirm.", code: "wallet_in_use" }, 409)
+      }
+      store.disconnect(other.tg_id)
+      await notifyOrQueue(store, notifier, other.tg_id, `🔌 Your wallet <code>${body.address.slice(0, 6)}…${body.address.slice(-4)}</code> was linked to another Telegram account, so it's no longer linked here. Your loan and funds are on-chain and untouched. If that wasn't you, move your funds to a new wallet.`, {
+        buttons: [[{ text: "🔗 Connect a wallet", webApp: `${config.miniappUrl}/#/link` }]],
+      })
+      live.publish(other.tg_id, { reason: "position" })
+    }
     const h = handoffOf(c)
     if (h && !store.useHandoff(h.token)) return c.json({ error: "This link was already used." }, 401)
     store.setAddress(u.tg_id, body.address)
+    live.publish(u.tg_id, { reason: "position" })
     await notifier.send(u.tg_id, `🔗 Wallet linked: <code>${body.address}</code>\nTry /position or /borrow 1800 160.`)
     return c.json({ address: body.address })
   })
@@ -207,50 +279,32 @@ export function createApi(d: ApiDeps) {
     if ("res" in r) return r.res
     const { intent } = r
     const body = await c.req.json().catch(() => ({}))
-    const status = body.status === "failed" ? "failed" : "done"
     const txHash: string | undefined = typeof body.txHash === "string" && /^0x[0-9a-fA-F]{64}$/.test(body.txHash) ? body.txHash : undefined
-    if (intent.status !== "pending") return c.json({ ok: true, status: intent.status })
-    if (status === "done") {
+    if (intent.status !== "pending") return c.json({ ok: true, status: intent.status, txHash: intent.tx_hash })
+    // the wallet broadcast it: remember the hash so the server settles it even if the app closes now
+    if (body.status === "submitted") {
       if (!txHash) return c.json({ error: "txHash required" }, 400)
-      const rc = await chain.receipt(txHash)
-      if (!rc || !rc.ok) return c.json({ error: "transaction not confirmed yet" }, 409)
-      const u = store.getUser(intent.tg_id)
-      if (!u?.address || rc.from.toLowerCase() !== u.address.toLowerCase()) return c.json({ error: "transaction was not sent by your linked wallet" }, 403)
+      store.setIntentTx(intent.id, txHash)
+      live.publish(intent.tg_id, { reason: "tx_submitted", intentId: intent.id, tx: txHash })
+      return c.json({ ok: true, status: "pending" })
     }
-    const h = handoffOf(c)
-    if (h && status === "done" && !store.useHandoff(h.token)) return c.json({ error: "This link was already used." }, 401)
-    store.completeIntent(intent.id, status, txHash)
-    if (status === "done") {
-      await afterIntent(intent, txHash!)
-    }
-    return c.json({ ok: true })
-  })
-
-  async function afterIntent(intent: IntentRow, txHash: string) {
-    const user = store.getUser(intent.tg_id)!
-    const p = intent.params as Record<string, string>
-    const url = explorerTx(config.network, txHash)
-    const verbs: Partial<Record<IntentRow["type"], string>> = {
-      borrow: "✅ Loan opened.", repay: "✅ Repayment confirmed.", add_collateral: "✅ Collateral added.", fund_reserve: "✅ Reserve funded.",
-      protect_config: "✅ Protection settings saved.", send: `✅ Sent${p.label ? " to " + esc(p.label) : ""}.`, pay_request: "✅ Payment sent.", create_claim: "🎁 Claim link created.",
-    }
-    const text = verbs[intent.type]
-    if (text) await notifier.send(user.tg_id, text + (intent.type === "borrow" ? "\nSee /position for your ratio and liquidation price." : ""), { buttonText: "View transaction", buttonUrl: url })
-
-    if (intent.type === "send" && p.toTg) {
-      const to = store.getUser(Number(p.toTg))
-      if (to) await notifier.send(to.tg_id, `💸 ${user.username ? "@" + esc(user.username) : esc(user.first_name ?? "Someone")} sent you <b>${fmtMusd(BigInt(p.amount), 2)}</b>.`, { buttonText: "View transaction", buttonUrl: url })
-    }
-    if (intent.type === "pay_request" && p.requestId) {
-      const req = store.markRequestPaid(p.requestId, { tg_id: user.tg_id, tx_hash: txHash, username: user.username ?? undefined })
-      const fresh = req && store.getRequest(req.id)
-      if (fresh?.message_id && d.editMessage) {
-        const requester = store.getUser(fresh.requester_tg)
-        await d.editMessage(fresh.chat_id, fresh.message_id, renderRequest(fresh, requester?.username ? "@" + requester.username : requester?.first_name ?? "Someone"), payKeyboard(config.botUsername, fresh.id)).catch(() => undefined)
+    if (body.status === "failed") {
+      // the user cancelled or the wallet refused before anything was broadcast; nothing to check on-chain
+      if (!intent.tx_hash && !txHash) {
+        store.completeIntent(intent.id, "failed")
+        return c.json({ ok: true, status: "failed" })
       }
-      if (fresh) await notifier.send(fresh.requester_tg, `💸 ${user.username ? "@" + esc(user.username) : "Someone"} paid your request.`, { buttonText: "View transaction", buttonUrl: url })
     }
-  }
+    const hash = txHash ?? intent.tx_hash
+    if (!hash) return c.json({ error: "txHash required" }, 400)
+    const h = handoffOf(c)
+    if (h && !store.getHandoff(h.token)) return c.json({ error: "This link was already used." }, 401)
+    const res = await completion.confirm(intent, hash)
+    if (res.status === "unconfirmed") return c.json({ error: "transaction not confirmed yet", status: "pending" }, 409)
+    if (res.status === "wrong_sender") return c.json({ error: "transaction was not sent by your linked wallet" }, 403)
+    if (h) store.useHandoff(h.token)
+    return c.json({ ok: res.status === "done", status: res.status, ...(res.status === "failed" ? { reason: res.reason } : {}), txHash: hash })
+  })
 
   return app
 }

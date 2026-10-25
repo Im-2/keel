@@ -1,7 +1,6 @@
-import type { ReactNode } from "react"
+import { useEffect, useState, type ReactNode } from "react"
 import type { ActivityItem } from "../lib/api"
 import { big, fmtBtc, fmtIcr, fmtMusd, timeAgo } from "../lib/units"
-import { parseUnits18 } from "@keel/shared"
 import { IconBorrow, IconCheck, IconCoin, IconDrop, IconGift, IconMinus, IconPlus, IconSend, IconShield } from "./icons"
 
 interface Described {
@@ -12,49 +11,82 @@ interface Described {
   sign: "in" | "out" | "neutral"
 }
 
-/** Bot intents store 18-decimal integers, except pay_request which stores a decimal string. */
-const amt = (p: Record<string, string>, type: string) => (type === "pay_request" ? parseUnits18(p.amount ?? "0") : big(p.amount))
+const who = (i: ActivityItem, pre: string) => (i.counterparty ? `${pre} ${i.counterparty}` : "")
 
 export function describe(i: ActivityItem): Described {
   const p = i.params
+  const a = big(i.amount)
+  const musd = (d = 2) => fmtMusd(a, d)
   switch (i.type) {
-    case "borrow": return { icon: <IconBorrow />, title: "Borrowed MUSD", sub: "Loan opened", amount: `+${fmtMusd(amt(p, i.type), 0)}`, sign: "in" }
+    case "borrow": return { icon: <IconBorrow />, title: "Borrowed MUSD", sub: "Loan proceeds", amount: `+${musd(0)}`, sign: "in" }
     case "close": return { icon: <IconCheck />, title: "Loan closed", sub: "Collateral returned", amount: "", sign: "neutral" }
-    case "repay": return { icon: <IconMinus />, title: "Repaid", sub: "Loan payment", amount: `−${fmtMusd(amt(p, i.type), 2)}`, sign: "out" }
-    case "add_collateral": return { icon: <IconPlus />, title: "Added collateral", sub: "Ratio raised", amount: fmtBtc(amt(p, i.type), 5), sign: "neutral" }
-    case "fund_reserve": return { icon: <IconDrop />, title: "Funded reserve", sub: "Guardian top-up fuel", amount: fmtBtc(amt(p, i.type), 5), sign: "neutral" }
+    case "repay": return { icon: <IconMinus />, title: "Repaid", sub: "Loan payment", amount: a ? `−${musd()}` : "", sign: "out" }
+    case "add_collateral": return { icon: <IconPlus />, title: "Added collateral", sub: "Ratio raised", amount: fmtBtc(a, 5), sign: "neutral" }
+    case "fund_reserve": return { icon: <IconDrop />, title: "Funded reserve", sub: "Guardian top-up fuel", amount: fmtBtc(a, 5), sign: "neutral" }
+    case "withdraw_reserve": return { icon: <IconDrop />, title: "Reserve withdrawn", sub: "Back to your wallet", amount: fmtBtc(a, 5), sign: "neutral" }
     case "protect_config": return { icon: <IconShield />, title: String(p.enabled) === "false" ? "Protection off" : "Protection on", sub: String(p.enabled) === "false" ? "Guardian paused" : `Acts below ${fmtIcr(big(p.minIcr))}`, amount: "", sign: "neutral" }
-    case "send": return { icon: <IconSend />, title: `Sent${p.label ? " to " + p.label : ""}`, sub: p.memo || "Payment", amount: `−${fmtMusd(amt(p, i.type), 2)}`, sign: "out" }
-    case "pay_request": return { icon: <IconCoin />, title: "Paid a request", sub: p.memo || "Group payment", amount: `−${fmtMusd(amt(p, i.type), 2)}`, sign: "out" }
-    case "create_claim": return { icon: <IconGift />, title: "Claim link", sub: p.forName ? `For ${p.forName}` : "Escrowed in KeelPay", amount: `−${fmtMusd(amt(p, i.type), 2)}`, sign: "out" }
+    case "send": return { icon: <IconSend />, title: `Sent${who(i, " to")}`, sub: i.memo || "Payment", amount: `−${musd()}`, sign: "out" }
+    case "received": return { icon: <IconCoin />, title: `Received${who(i, " from")}`, sub: i.memo || "Payment", amount: `+${musd()}`, sign: "in" }
+    case "pay_request": return { icon: <IconCoin />, title: "Paid a request", sub: i.memo || "Group payment", amount: `−${musd()}`, sign: "out" }
+    case "create_claim": return { icon: <IconGift />, title: "Claim link", sub: i.counterparty ? `For ${i.counterparty}` : "Escrowed in KeelPay", amount: `−${musd()}`, sign: "out" }
+    case "claim_claimed": return { icon: <IconGift />, title: "Your link was claimed", sub: i.counterparty ? `By ${i.counterparty}` : "Claimed", amount: musd(), sign: "neutral" }
+    case "claim_received": return { icon: <IconGift />, title: "Claimed a link", sub: "Gift received", amount: `+${musd()}`, sign: "in" }
+    case "claim_refunded": return { icon: <IconGift />, title: "Claim link refunded", sub: "Back in your wallet", amount: `+${musd()}`, sign: "in" }
     case "protected": {
       const did = big(p.btcAdded) > 0n ? `+${fmtBtc(big(p.btcAdded), 5)}` : `−${fmtMusd(big(p.musdRepaid), 2)} debt`
-      return { icon: <IconShield />, title: "Guardian top-up", sub: `${fmtIcr(big(p.icrBefore))} → ${fmtIcr(big(p.icrAfter))}`, amount: did, sign: "in" }
+      return { icon: <IconShield />, title: "Guardian top-up", sub: p.icrBefore ? `${fmtIcr(big(p.icrBefore))} → ${fmtIcr(big(p.icrAfter))}` : "Protected", amount: did, sign: "in" }
     }
     default: return { icon: <IconCoin />, title: i.type, sub: "", amount: "", sign: "neutral" }
   }
 }
 
-export function ActivityRow({ item, explorer, index = 0 }: { item: ActivityItem; explorer: string; index?: number }) {
+export function ActivityRow({ item, explorer, index = 0, fresh = false }: { item: ActivityItem; explorer: string; index?: number; fresh?: boolean }) {
   const d = describe(item)
+  const cls = `act-row${fresh ? " act-new" : ""}${item.status !== "confirmed" ? ` act-${item.status}` : ""}`
   const body = (
     <>
       <span className={`act-icon act-${item.type}`}>{d.icon}</span>
       <span className="act-text">
         <strong>{d.title}</strong>
-        <small>{d.sub}</small>
+        <small>{item.status === "pending" ? <><span className="spinner tiny-spin" aria-hidden /> Confirming on Mezo…</> : item.status === "failed" ? "Failed: reverted on-chain" : d.sub}</small>
       </span>
       <span className="act-right">
-        <strong className={`amt-${d.sign}`}>{d.amount}</strong>
+        <strong className={`amt-${item.status === "failed" ? "neutral struck" : d.sign}`}>{d.amount}</strong>
         <small>{timeAgo(item.at)}</small>
       </span>
     </>
   )
   return item.tx ? (
-    <a className="act-row" href={`${explorer}/tx/${item.tx}`} target="_blank" rel="noreferrer" style={{ animationDelay: `${index * 40}ms` }}>{body}</a>
+    <a className={cls} href={`${explorer}/tx/${item.tx}`} target="_blank" rel="noreferrer" style={{ animationDelay: `${index * 40}ms` }}>{body}</a>
   ) : (
-    <div className="act-row" style={{ animationDelay: `${index * 40}ms` }}>{body}</div>
+    <div className={cls} style={{ animationDelay: `${index * 40}ms` }}>{body}</div>
   )
+}
+
+// rows already on screen (any screen), so a refetch only highlights what's actually new or changed state
+const seen = new Map<string, string>()
+let primed = false
+
+/** Ids to highlight: rows that just appeared (a received transfer, a protection) or changed state (pending → confirmed). */
+export function useNewRows(items: ActivityItem[] | undefined): Set<string> {
+  const [fresh, setFresh] = useState<Set<string>>(() => new Set())
+  useEffect(() => {
+    if (!items) return
+    const changed = items.filter((i) => seen.get(i.id) !== i.status && !(i.tx && seen.get(i.tx) === i.status)).map((i) => i.id)
+    for (const i of items) {
+      seen.set(i.id, i.status)
+      if (i.tx) seen.set(i.tx, i.status)
+    }
+    if (!primed) {
+      primed = true
+      return
+    }
+    if (!changed.length) return
+    setFresh(new Set(changed))
+    const t = setTimeout(() => setFresh(new Set()), 2600)
+    return () => clearTimeout(t)
+  }, [items])
+  return fresh
 }
 
 export const explorerFor = (network: string) => (network === "mainnet" ? "https://explorer.mezo.org" : "https://explorer.test.mezo.org")

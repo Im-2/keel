@@ -1,9 +1,10 @@
 import {
-  CCR, E18, MCR, RISK_EMOJI, fmtBtc, fmtIcr, fmtMusd, fmtUsd, parseUnits18, riskLevel,
+  CCR, E18, MCR, RISK_EMOJI, fmtBtc, fmtIcr, fmtMusd, fmtUsd, fmtUsdCents, parseUnits18, riskLevel, summarizeBalances,
   type BorrowQuote, type SystemState,
 } from "@keel/shared"
 import type { UserView } from "./chain"
 import type { RequestRow } from "./db"
+import type { HistoryItem } from "./history"
 
 export const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
 
@@ -73,12 +74,14 @@ export function helpText(): string {
     "• <i>protect me at 170</i> · <i>turn off protection</i>",
     "• <i>send 20 to @ada for lunch</i> · <i>split 90 with @ada and @bob</i>",
     "• <i>request 30 from the group for pizza</i> · <i>mute alerts</i>",
+    "• <i>what's my balance?</i> · <i>show my history</i>",
     "I always repeat the amount and recipient back and show the full quote before anything is signed.",
     "",
     "<b>Or use commands</b>",
     "",
     "<b>Your position</b>",
     "/position — ratio, liquidation price, redemption queue",
+    "/balance — BTC, MUSD and total value · /history — recent activity",
     "/borrow <code>1800 160</code> — quote &amp; open a loan (amount, ratio%)",
     "/repay <code>1000</code> · /addcollateral <code>0.05</code>",
     "",
@@ -124,4 +127,51 @@ export function renderRequest(r: RequestRow, requesterName: string): string {
     lines.push("", ...r.paid.map((p) => `✅ ${p.username ? "@" + esc(p.username) : "paid"}`))
   }
   return lines.join("\n")
+}
+
+/** Wallet, locked and total figures; the same numbers as the Mini App's balance card. */
+export function balanceCard(v: UserView, sys: SystemState, wallet: { btc: bigint; musd: bigint }, faucetUrl?: string): string {
+  const b = summarizeBalances({
+    walletBtc: wallet.btc, walletMusd: wallet.musd, price: sys.price,
+    loanColl: v.trove?.coll, loanDebt: v.trove?.debt, reserveBtc: v.guardian?.reserveBTC, reserveMusd: v.guardian?.reserveMUSD,
+  })
+  const lines = [
+    `💼 <b>Wallet ${fmtUsdCents(b.walletUsd)}</b>`,
+    `• BTC <b>${fmtBtc(wallet.btc, 6)}</b> ≈ ${fmtUsdCents(b.walletBtcUsd)}`,
+    `• MUSD <b>${fmtMusd(wallet.musd, 2)}</b> ≈ ${fmtUsdCents(b.walletMusdUsd)}`,
+  ]
+  if (b.lockedUsd > 0n) {
+    lines.push("🔒 <b>Locked in Keel</b>")
+    if (v.trove) lines.push(`• In your loan: <b>${fmtBtc(v.trove.coll, 5)}</b> ≈ ${fmtUsdCents(b.loanCollUsd)} (debt ${fmtMusd(v.trove.debt, 2)})`)
+    if (b.reserveUsd > 0n) lines.push(`• In protection reserve: <b>${fmtBtc(v.guardian!.reserveBTC, 5)}</b>${v.guardian!.reserveMUSD > 0n ? " + " + fmtMusd(v.guardian!.reserveMUSD, 2) : ""} ≈ ${fmtUsdCents(b.reserveUsd)}`)
+    lines.push(`Σ <b>Total ${fmtUsdCents(b.grossUsd)}</b> (wallet + locked)${b.debt > 0n ? ` · after debt ${fmtUsdCents(b.netUsd)}` : ""}`)
+  }
+  lines.push(`<i>BTC at ${fmtUsd(sys.price, 0)} (Mezo price feed).</i>`)
+  if (wallet.btc === 0n && faucetUrl) lines.push(`0 BTC — get testnet BTC from the <a href="${faucetUrl}">faucet</a>.`)
+  return lines.join("\n")
+}
+
+const HISTORY_LABEL: Record<HistoryItem["type"], string> = {
+  borrow: "💵 Borrowed", repay: "↩️ Repaid", add_collateral: "➕ Collateral added", fund_reserve: "🔋 Reserve funded", withdraw_reserve: "🔋 Reserve withdrawn",
+  protect_config: "🛡 Protection settings", close: "✅ Loan closed", protected: "🛡 Guardian protected your loan", send: "📤 Sent", received: "📥 Received",
+  pay_request: "💸 Paid a request", create_claim: "🎁 Claim link created", claim_claimed: "🎁 Your claim link was claimed", claim_received: "🎁 Claimed from a link", claim_refunded: "↩️ Claim link refunded",
+}
+
+const when = (at: number) => {
+  const d = new Date(at * 1000)
+  const mon = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][d.getUTCMonth()]
+  return `${mon} ${d.getUTCDate()}, ${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")} UTC`
+}
+
+/** One history row for chat: what, how much, with whom, when, and the explorer link. */
+export function historyLine(i: HistoryItem, explorerTx: (tx: string) => string): string {
+  let label = HISTORY_LABEL[i.type]
+  if (i.type === "protect_config") label = i.params.enabled === "false" ? "🛡 Protection turned off" : `🛡 Protection on (acts below ${fmtIcr(BigInt(i.params.minIcr ?? "0"))})`
+  const amt = i.amount && BigInt(i.amount) > 0n ? (i.type === "protected" ? fmtBtc(BigInt(i.amount), 5) : i.asset === "BTC" ? fmtBtc(BigInt(i.amount), 5) : fmtMusd(BigInt(i.amount), 2)) : ""
+  const who = i.counterparty ? (i.type === "received" ? ` from ${esc(i.counterparty)}` : i.type === "claim_claimed" ? ` by ${esc(i.counterparty)}` : i.type === "send" ? ` to ${esc(i.counterparty)}` : i.type === "create_claim" ? ` for ${esc(i.counterparty)}` : "") : ""
+  const extra = i.type === "protected" && i.params.icrBefore ? ` · ${fmtIcr(BigInt(i.params.icrBefore))} → ${fmtIcr(BigInt(i.params.icrAfter))}` : ""
+  const status = i.status === "pending" ? " ⏳ <i>pending</i>" : i.status === "failed" ? " ❌ <i>reverted</i>" : ""
+  const memo = i.memo ? ` “${esc(i.memo)}”` : ""
+  const link = i.tx ? ` · <a href="${explorerTx(i.tx)}">tx</a>` : ""
+  return `${label}${who}${amt ? ` <b>${amt}</b>` : ""}${extra}${memo}${status}\n   <i>${when(i.at)}</i>${link}`
 }

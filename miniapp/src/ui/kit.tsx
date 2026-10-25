@@ -1,4 +1,4 @@
-import { useEffect, useId, useState, type ReactNode, type CSSProperties } from "react"
+import { useEffect, useId, useRef, useState, type ReactNode, type CSSProperties } from "react"
 import { IconAlert, IconCheck } from "./icons"
 import type { Tone } from "../lib/units"
 
@@ -197,4 +197,57 @@ export function WalletIcon({ wallet, size = 40 }: { wallet?: { name: string; ico
     return <span className="wallet-ico fallback" style={{ ...style, fontSize: size * 0.42 }} aria-hidden>{wallet?.name[0] ?? "?"}</span>
   }
   return <img className="wallet-ico" style={style} src={wallet.icon} alt="" width={size} height={size} loading="eager" decoding="async" onError={() => setBroken(true)} />
+}
+
+const reducedMotion = () => typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches
+
+/** A number that counts to its new value (ease-out) and flashes up/down; instant under reduced motion. */
+export function CountUp({ value, format, duration = 750 }: { value: number; format: (v: number) => string; duration?: number }) {
+  const [shown, setShown] = useState(value)
+  const [flash, setFlash] = useState<"up" | "down" | null>(null)
+  const from = useRef(value)
+  useEffect(() => {
+    const start = from.current
+    if (start === value) return
+    from.current = value
+    setFlash(value > start ? "up" : "down")
+    const clear = setTimeout(() => setFlash(null), 1400)
+    if (reducedMotion()) {
+      setShown(value)
+      return () => clearTimeout(clear)
+    }
+    const t0 = performance.now()
+    let raf = 0
+    const step = (t: number) => {
+      const k = Math.min(1, (t - t0) / duration)
+      setShown(start + (value - start) * (1 - (1 - k) ** 3))
+      if (k < 1) raf = requestAnimationFrame(step)
+    }
+    raf = requestAnimationFrame(step)
+    return () => {
+      cancelAnimationFrame(raf)
+      clearTimeout(clear)
+      setShown(value)
+    }
+  }, [value, duration])
+  return <span className={`countup${flash ? ` flash-${flash}` : ""}`}>{format(shown)}</span>
+}
+
+/** Stacked bar of how value is split, with a legend. Parts with zero value are left out. */
+export function SplitBar({ parts }: { parts: Array<{ label: string; value: number; tone: "black" | "red" | "grey" | "rose" }> }) {
+  const total = parts.reduce((a, p) => a + Math.max(0, p.value), 0)
+  const shown = parts.filter((p) => p.value > 0)
+  if (!total) return null
+  return (
+    <div className="split">
+      <div className="split-bar" role="img" aria-label={shown.map((p) => `${p.label} ${Math.round((p.value / total) * 100)}%`).join(", ")}>
+        {shown.map((p) => <span key={p.label} className={`seg seg-${p.tone}`} style={{ flexGrow: p.value / total }} />)}
+      </div>
+      <div className="split-legend">
+        {shown.map((p) => (
+          <span key={p.label}><i className={`dot seg-${p.tone}`} />{p.label} {p.value / total < 0.005 ? "<1" : Math.round((p.value / total) * 100)}%</span>
+        ))}
+      </div>
+    </div>
+  )
 }

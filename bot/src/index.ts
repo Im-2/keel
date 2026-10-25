@@ -17,6 +17,10 @@ import { TelegramNotifier } from "./notify"
 import { Premium } from "./premium"
 import { Ops, mountOps } from "./ops"
 import { libsqlMirror } from "./mirror"
+import { LiveBus } from "./live"
+import { createCompletion } from "./completion"
+import { History } from "./history"
+import { BlockWatcher } from "./watcher"
 
 const config = loadConfig()
 // Hosts with an ephemeral disk (Render free) keep the database in Turso: the local file is a fast cache that is
@@ -24,18 +28,20 @@ const config = loadConfig()
 const mirror = process.env.TURSO_DATABASE_URL ? libsqlMirror(process.env.TURSO_DATABASE_URL, process.env.TURSO_AUTH_TOKEN) : undefined
 const store = await Store.open(config.dbPath, mirror)
 const chain = new LiveChain(config.deployment, config.rpcUrl)
-const bot = createBot({ config, store, chain })
+const history = new History({ config, store, chain })
+const bot = createBot({ config, store, chain, history })
 const notifier = new TelegramNotifier(bot.api)
 
 const relayer = config.relayerKey ? new LiveClaimRelayer(chain, config) : undefined
 if (!relayer) console.warn("No RELAYER_PRIVATE_KEY / KEEPER_PRIVATE_KEY: claim links cannot be relayed.")
 
 const premium = new Premium(store)
-const app = createApi({
-  config, store, chain, notifier, relayer, premium,
-  editMessage: (chatId, messageId, html, replyMarkup) =>
-    bot.api.editMessageText(chatId, messageId, html, { parse_mode: "HTML", reply_markup: replyMarkup as never }),
-})
+const live = new LiveBus()
+const editMessage = (chatId: number, messageId: number, html: string, replyMarkup?: unknown) =>
+  bot.api.editMessageText(chatId, messageId, html, { parse_mode: "HTML", reply_markup: replyMarkup as never })
+const completion = createCompletion({ config, store, chain, notifier, live, editMessage })
+const watcher = new BlockWatcher({ config, store, chain, notifier, live, completion })
+const app = createApi({ config, store, chain, notifier, relayer, premium, live, completion, history, editMessage })
 
 // Premium users are checked every tick; everyone else every 4th tick.
 const alerts = new AlertEngine({ config, store, chain, notifier, isPremium: premium.isPremium }, config.premium ? 4 : 1)
@@ -46,7 +52,7 @@ const publicUrl = process.env.PUBLIC_URL?.replace(/\/$/, "")
 const mode = publicUrl ? "webhook" : "polling"
 let me: { username?: string } | null = null
 const ops = new Ops({
-  config, store, chain, notifier, alerts, keeper, mode,
+  config, store, chain, notifier, alerts, keeper, mode, watcher, live,
   keeperAddress: config.keeperKey ? privateKeyToAccount(config.keeperKey).address : undefined,
   minKeeperBtc: Number(process.env.KEEPER_MIN_BTC ?? 0.001),
   botInfo: async () => (me ??= await bot.api.getMe()),
@@ -76,9 +82,17 @@ setInterval(() => void ops.runAlerts(), config.pollMs)
 if (keeper) setInterval(() => void ops.runKeeper(), config.pollMs)
 void ops.runKeeper()
 void ops.runAlerts()
+// The block watcher paces itself: every ~4s (about one Mezo block) while someone has Keel open, else every 15s.
+const watchLoop = async () => {
+  await ops.runWatcher()
+  setTimeout(watchLoop, live.online().length ? 4_000 : 15_000)
+}
+void watchLoop()
 
 await bot.api.setMyCommands([
   { command: "position", description: "Your loan, ratio and liquidation price" },
+  { command: "balance", description: "BTC, MUSD and total value" },
+  { command: "history", description: "Your recent activity" },
   { command: "borrow", description: "Borrow MUSD against BTC, e.g. /borrow 1800 160" },
   { command: "protect", description: "Auto-protect your loan" },
   { command: "send", description: "Send MUSD, e.g. /send @friend 25" },

@@ -73,20 +73,6 @@ describe("alerts", () => {
     await engine.tick()
     expect(notifier.sent.filter((m) => m.text.includes("Recovery Mode is ON"))).toHaveLength(1)
   })
-
-  it("reports guardian protections and incoming transfers from new blocks", async () => {
-    const { store, chain, notifier, engine } = setup()
-    chain.setView(ADA, { trove: trove(pct(200)), guardian: guardian() })
-    await engine.tick() // records block head
-    chain.head = 105n
-    chain.protectedLogs = [{ guardian: GUARDIAN, btcAdded: E18 / 100n, musdRepaid: 0n, icrBefore: pct(128), icrAfter: pct(150), tx: "0xabc" }]
-    chain.transfers = [{ from: BOB, to: ADA, value: 25n * E18, tx: "0xdef" }]
-    await engine.tick()
-    const texts = notifier.sent.map((m) => m.text)
-    expect(texts.some((t) => t.includes("Guardian protected") && t.includes("128%") && t.includes("150%"))).toBe(true)
-    expect(texts.some((t) => t.includes("received") && t.includes("25 MUSD"))).toBe(true)
-    expect(store.getKv("stat:protections")).toBe("1")
-  })
 })
 
 describe("keeper", () => {

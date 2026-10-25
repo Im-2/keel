@@ -7,6 +7,8 @@ import type { Config } from "./config"
 import type { Store } from "./db"
 import type { Keeper } from "./keeper"
 import type { Notifier } from "./notify"
+import type { BlockWatcher } from "./watcher"
+import type { LiveBus } from "./live"
 
 /**
  * Operations for an always-on deployment: a schedule that external pingers can drive (so keeper and alerts keep
@@ -19,6 +21,8 @@ export interface OpsDeps {
   chain: ChainService
   notifier: Notifier
   alerts: AlertEngine
+  watcher?: BlockWatcher
+  live?: LiveBus
   keeper?: Keeper
   keeperAddress?: Address
   /** Resolves the bot's identity (getMe); used to show whether Telegram is reachable. */
@@ -85,6 +89,14 @@ export class Ops {
     })
   }
 
+  runWatcher() {
+    return this.once("watcher", async () => {
+      if (!this.d.watcher) return "off"
+      const r = await this.d.watcher.tick()
+      return r ? `blocks ${r.from}–${r.to}, ${r.added} new` : "waiting for blocks"
+    })
+  }
+
   async keeperBalance(): Promise<bigint | null> {
     if (!this.d.keeperAddress) return null
     return this.d.chain.balance(this.d.keeperAddress)
@@ -134,6 +146,7 @@ export class Ops {
       rpc,
       keeper: { ...keeper, lastRun: this.lastRun("keeper") },
       alerts: { lastRun: this.lastRun("alerts") },
+      watcher: { lastRun: this.lastRun("watcher"), cursor: this.d.store.getKv("watch_block"), liveClients: this.d.live?.connections() ?? 0 },
       database: { rows: this.d.store.counts(), mirrored: !!process.env.TURSO_DATABASE_URL, mirrorBacklog: this.d.store.mirrorBacklog, mirrorError: this.d.store.mirrorError },
     }
   }
@@ -164,6 +177,7 @@ ${row("Mezo RPC", s.rpc.ok, s.rpc.ok ? `block ${esc((s.rpc as { block: string })
 ${row("Keeper wallet", k.configured ? !k.low && !k.error : false, k.configured ? `${esc(k.balanceBtc ?? "?")} BTC${k.low ? ` — <b>LOW</b>, top up (min ${esc(k.minBtc)})` : ""}<br><code>${esc(k.address)}</code>` : "not configured")}
 ${row("Last keeper run", k.lastRun?.ok, k.lastRun ? `${esc(ago(k.lastRun.at))} · ${esc(k.lastRun.detail ?? "")}` : "never")}
 ${row("Last alerts run", a?.ok, a ? `${esc(ago(a.at))}${a.ok ? "" : " · " + esc(a.detail)}` : "never")}
+${row("Block watcher", s.watcher.lastRun?.ok, s.watcher.lastRun ? `${esc(ago(s.watcher.lastRun.at))} · ${esc(s.watcher.lastRun.detail ?? "")} · ${esc(s.watcher.liveClients)} live` : "never")}
 ${row("Database", !s.database.mirrorError, `${esc(Object.entries(s.database.rows).map(([t, n]) => `${t} ${n}`).join(" · "))}<br>${s.database.mirrored ? `mirrored to Turso${s.database.mirrorBacklog ? `, ${esc(s.database.mirrorBacklog)} pending` : ""}` : "local only"}${s.database.mirrorError ? `<br>${esc(s.database.mirrorError)}` : ""}`)}
 </table></main></body></html>`)
   })
@@ -175,6 +189,7 @@ ${row("Database", !s.database.mirrorError, `${esc(Object.entries(s.database.rows
     // answer at once; the jobs run in the background (cron services time out after ~30s)
     void ops.runKeeper()
     void ops.runAlerts()
+    void ops.runWatcher()
     return c.json({ ok: true, keeper: ops.lastRun("keeper"), alerts: ops.lastRun("alerts") })
   }
   app.get("/cron/tick", tick as never)
