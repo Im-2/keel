@@ -10,6 +10,8 @@ import { Button, Glass, KeelMark, MezoBadge, Notice, Skeleton, StateView } from 
 import { IconGift, IconWallet } from "../ui/icons"
 import { explorerFor } from "../ui/activity"
 import { closeApp, haptic, shortError } from "../components"
+import { inTelegram } from "../lib/telegram"
+import { TelegramConnect } from "../ui/TelegramConnect"
 import type { AppCtx } from "../App"
 
 const NEW_WALLET_KEY = "keel:claim-wallet"
@@ -95,7 +97,8 @@ export function Claim({ ctx, keyHex }: { ctx: AppCtx; keyHex?: string }) {
             {address ? (
               <Button busy={busy} onClick={() => claim(address)}>Claim to {short(address)}</Button>
             ) : (
-              <div className="center"><ConnectButton showBalance={false} chainStatus="none" label="Connect wallet" /></div>
+              // inside Telegram RainbowKit's modal can't open wallet apps: use the same WalletConnect flow as the rest of Keel
+              inTelegram() ? <TelegramConnect title="Connect to claim" showMark={false} /> : <div className="center"><ConnectButton showBalance={false} chainStatus="none" label="Connect wallet" /></div>
             )}
           </Glass>
           <Glass>
