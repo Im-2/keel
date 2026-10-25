@@ -5,6 +5,7 @@ import {
   type Deployment,
 } from "@keel/shared"
 import type { IntentDto } from "./api"
+import { claimKeyFor, saveClaimKey } from "./claimkeys"
 
 export const ZERO: Address = "0x0000000000000000000000000000000000000000"
 const NICR_PRECISION = 10n ** 20n
@@ -252,16 +253,18 @@ export async function buildPlan(intent: IntentDto, ctx: Ctx, input: { amount?: s
       return plan
     }
     case "send":
+    case "pay_split":
     case "pay_request": {
-      plan.title = intent.type === "send" ? `Send MUSD${p.label ? " to " + p.label : ""}` : "Pay request"
-      const amount = intent.type === "send" ? BigInt(p.amount) : parseUnits18(p.amount)
+      plan.title = intent.type === "send" ? `Send MUSD${p.label ? " to " + p.label : ""}` : intent.type === "pay_split" ? `Pay your share${p.memo ? " · " + p.memo : ""}` : "Pay request"
+      const amount = intent.type === "pay_request" ? parseUnits18(p.amount) : BigInt(p.amount)
       const to = p.to as Address
       const bal = await ctx.pub.readContract({ address: m.musd, abi: musdAbi, functionName: "balanceOf", args: [ctx.account] })
       plan.rows = [
         ["Amount", fmtMusd(amount, 2)],
+        ...(intent.type === "pay_split" ? ([["Requested by", p.label ?? "the requester"]] as Array<[string, string]>) : []),
         ["To", `${to.slice(0, 8)}…${to.slice(-6)}`],
         ["Fee", "none (gas in BTC only)"],
-        ...(p.memo ? ([["Note", p.memo]] as Array<[string, string]>) : []),
+        ...(p.memo ? ([[intent.type === "pay_split" ? "For" : "Note", p.memo]] as Array<[string, string]>) : []),
       ]
       if (bal < amount) plan.warnings.push(`Your wallet has ${fmtMusd(bal, 2)}.`)
       plan.blocked = bal < amount
@@ -273,8 +276,10 @@ export async function buildPlan(intent: IntentDto, ctx: Ctx, input: { amount?: s
       const amount = BigInt(p.amount)
       const hours = Number(p.expiryHours ?? 72)
       const { generatePrivateKey, privateKeyToAccount } = await import("viem/accounts")
-      const key = generatePrivateKey()
+      // one key per intent, saved before signing: a webview reload mid-signing must reuse it, not make a new link
+      const key = claimKeyFor(intent.id) ?? generatePrivateKey()
       const link = privateKeyToAccount(key).address
+      saveClaimKey(intent.id, key, link)
       const expiry = BigInt(Math.floor(Date.now() / 1000) + hours * 3600)
       const bal = await ctx.pub.readContract({ address: m.musd, abi: musdAbi, functionName: "balanceOf", args: [ctx.account] })
       plan.rows = [
@@ -288,6 +293,17 @@ export async function buildPlan(intent: IntentDto, ctx: Ctx, input: { amount?: s
       plan.claimKey = key
       if (!(await allowanceOk(ctx, keel.pay, amount))) plan.steps.push(approveStep(keel.pay, amount))
       plan.steps.push({ label: "Escrow funds", run: (w, c) => write(w, c, { address: keel.pay, abi: keelPayAbi, functionName: "create", args: [link, amount, expiry] }) })
+      return plan
+    }
+    case "cancel_claim": {
+      plan.title = "Cancel claim link"
+      const link = p.link as Address
+      plan.rows = [
+        ["Refund to you", fmtMusd(BigInt(p.amount ?? "0"), 2)],
+        ["Link", `${link.slice(0, 8)}…${link.slice(-6)}`],
+        ["Fee", "none (gas in BTC only)"],
+      ]
+      plan.steps.push({ label: "Cancel & refund", run: (w, c) => write(w, c, { address: keel.pay, abi: keelPayAbi, functionName: "cancel", args: [link] }) })
       return plan
     }
     default:

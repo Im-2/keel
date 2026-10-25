@@ -1,5 +1,5 @@
 import { InlineKeyboard, type Bot, type Context } from "grammy"
-import { CCR, E18, MCR, collateralToTarget, computeIcr, fmtBtc, fmtIcr, fmtMusd, fmtUsd, liquidationPrice, parseUnits18, pct } from "@keel/shared"
+import { CCR, E18, MCR, collateralToTarget, computeIcr, fmtBtc, fmtIcr, fmtMusd, fmtUsd, liquidationPrice, parseUnits18, pct, requestedShares } from "@keel/shared"
 import type { Actions } from "./bot"
 import type { ChainService } from "./chain"
 import type { Config } from "./config"
@@ -182,8 +182,19 @@ export function mountChat(bot: Bot, d: ChatDeps) {
         text = `Post a request for <b>${fmtMusd(a!)}</b>${slots.memo ? ` for “${esc(slots.memo)}”` : ""} in this chat?`
         break
       case "split": {
-        const n = slots.usernames.length + 1
-        text = `Split <b>${fmtMusd(a!)}</b> ${n} ways with ${slots.usernames.map((u) => "<b>@" + esc(u) + "</b>").join(", ")}${slots.memo ? ` for “${esc(slots.memo)}”` : ""}? Each person pays <b>${fmtMusd(a! / BigInt(n))}</b>.`
+        const memo = slots.memo ? ` for “${esc(slots.memo)}”` : ""
+        if (!slots.usernames.length) {
+          text = `Split <b>${fmtMusd(a!)}</b>${memo} with everyone here who taps <b>I'm in</b>? You lock it when everyone's in.`
+          break
+        }
+        const names = slots.usernames.map((u) => "<b>@" + esc(u) + "</b>").join(", ")
+        try {
+          const { mine, theirs } = requestedShares(a!, slots.usernames.length, { kind: "equal" }, !slots.excludeMe)
+          const each = theirs.every((x) => x === theirs[0]) ? `Each pays <b>${fmtMusd(theirs[0], 2)}</b>` : `Shares: ${theirs.map((x) => fmtMusd(x, 2)).join(", ")}`
+          text = `Split <b>${fmtMusd(a!)}</b>${memo} with ${names}${slots.excludeMe ? " (not you)" : ` and you (${theirs.length + 1} ways)`}? ${each}${mine > 0n ? `, your own share is ${fmtMusd(mine, 2)}` : ""}.`
+        } catch (e) {
+          return void (await ctx.reply(`⚠️ ${esc((e as Error).message)}`, { parse_mode: "HTML" }))
+        }
         break
       }
       default:
@@ -229,7 +240,8 @@ export function mountChat(bot: Bot, d: ChatDeps) {
         return confirm(ctx, user, intent, slots)
       case "split":
         if (!a) return ask(ctx, user, intent, slots, "amount")
-        if (!slots.usernames.length) return ask(ctx, user, intent, slots, "names")
+        // in a group, "split 120 between everyone" (or no names) makes a split people join with "I'm in"
+        if (!slots.usernames.length && !(ctx.chat?.type !== "private")) return ask(ctx, user, intent, slots, "names")
         return confirm(ctx, user, intent, slots)
       default:
         return run(ctx, user, intent, slots)
@@ -254,7 +266,7 @@ export function mountChat(bot: Bot, d: ChatDeps) {
         })
       case "claim_link": return actions.claimLink(ctx, user, { amount: a!, forName: slots.usernames[0] ? "@" + slots.usernames[0] : undefined })
       case "request": return actions.request(ctx, user, { amount: a!, memo: slots.memo ?? null })
-      case "split": return actions.split(ctx, user, { total: a!, names: slots.usernames, memo: slots.memo ?? null })
+      case "split": return actions.split(ctx, user, { total: a!, names: slots.usernames, memo: slots.memo ?? null, includeMe: !slots.excludeMe })
       case "position": return actions.position(ctx, user)
       case "alerts": return actions.alerts(ctx, user)
       case "mute": return actions.setMuted(ctx, user, true)

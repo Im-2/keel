@@ -7,8 +7,9 @@ import { AmountInput, Button, Glass, MezoBadge, Notice, Segmented } from "../ui/
 import { IconGift, IconSend } from "../ui/icons"
 import { shortError } from "../components"
 import type { AppCtx } from "../App"
+import { SplitForm } from "./Split"
 
-type Mode = "send" | "link"
+type Mode = "send" | "link" | "split"
 
 export function Pay(_: { ctx: AppCtx }) {
   const [mode, setMode] = useState<Mode>("send")
@@ -46,9 +47,9 @@ export function Pay(_: { ctx: AppCtx }) {
 
   return (
     <>
-      <Header title={mode === "send" ? "Send MUSD" : "Claim link"} greeting="Pay" />
-      <Segmented<Mode> value={mode} onChange={(m) => { setMode(m); setErr(""); setNotOnKeel(false) }} options={[["send", "Send"], ["link", "Claim link"]]} />
-      <Glass orb={mode === "send" ? "gold" : "amber"} className="pay">
+      <Header title={mode === "send" ? "Send MUSD" : mode === "link" ? "Claim link" : "Split a bill"} greeting="Pay" />
+      <Segmented<Mode> value={mode} onChange={(m) => { setMode(m); setErr(""); setNotOnKeel(false) }} options={[["send", "Send"], ["link", "Claim link"], ["split", "Split"]]} />
+      {mode === "split" ? <SplitForm /> : <Glass orb={mode === "send" ? "gold" : "amber"} className="pay">
         <div className="pay-icon">{mode === "send" ? <IconSend size={26} /> : <IconGift size={26} />}</div>
         <p className="muted small center-text">
           {mode === "send" ? "Pay a Keel user by @username, or any 0x address." : "Escrow MUSD behind a link. Anyone you share it with can claim, even without a wallet. Unclaimed links refund after 72h."}
@@ -69,7 +70,7 @@ export function Pay(_: { ctx: AppCtx }) {
           <Button busy={busy} disabled={!wei || (mode === "send" && !to.trim())} onClick={() => submit(mode)}>Review & sign</Button>
         )}
         <p className="muted small center-text">No fee. Gas is paid in BTC.</p>
-      </Glass>
+      </Glass>}
       <footer className="foot"><MezoBadge /></footer>
     </>
   )

@@ -72,7 +72,7 @@ export function helpText(): string {
     "• <i>how safe is my loan?</i> · <i>when would I get liquidated?</i>",
     "• <i>what if BTC drops 20%?</i> · <i>what does protection do?</i>",
     "• <i>protect me at 170</i> · <i>turn off protection</i>",
-    "• <i>send 20 to @ada for lunch</i> · <i>split 90 with @ada and @bob</i>",
+    "• <i>send 20 to @ada for lunch</i> · <i>split 90 with ada, bob and chidi for dinner</i>",
     "• <i>request 30 from the group for pizza</i> · <i>mute alerts</i>",
     "• <i>what's my balance?</i> · <i>show my history</i>",
     "I always repeat the amount and recipient back and show the full quote before anything is signed.",
@@ -93,7 +93,10 @@ export function helpText(): string {
     "<b>Payments</b>",
     "/send <code>@friend 25</code> [note] — pay MUSD by handle",
     "/claimlink <code>25</code> — send MUSD to someone with no wallet",
-    "/request <code>25</code> [note] · /split <code>90 @a @b</code>",
+    "/split <code>100 @ada @bob @chidi dinner</code> — equal shares, live card, Pay buttons",
+    "   custom: <code>@ada:50 @bob:30</code> or <code>@ada 50% @bob 30%</code> · <code>notme</code> · <code>due friday</code>",
+    "   in a group with no names, people tap <b>I'm in</b> and you lock it",
+    "/request <code>25</code> [note] — anyone in the group can pay",
     "",
     "/link — connect or switch wallet · /disconnect — unlink it · /stats — keeper network",
   ].join("\n")
@@ -154,7 +157,7 @@ export function balanceCard(v: UserView, sys: SystemState, wallet: { btc: bigint
 const HISTORY_LABEL: Record<HistoryItem["type"], string> = {
   borrow: "💵 Borrowed", repay: "↩️ Repaid", add_collateral: "➕ Collateral added", fund_reserve: "🔋 Reserve funded", withdraw_reserve: "🔋 Reserve withdrawn",
   protect_config: "🛡 Protection settings", close: "✅ Loan closed", protected: "🛡 Guardian protected your loan", send: "📤 Sent", received: "📥 Received",
-  pay_request: "💸 Paid a request", create_claim: "🎁 Claim link created", claim_claimed: "🎁 Your claim link was claimed", claim_received: "🎁 Claimed from a link", claim_refunded: "↩️ Claim link refunded",
+  pay_request: "💸 Paid a request", pay_split: "🧾 Paid your share", create_claim: "🎁 Claim link created", claim_claimed: "🎁 Your claim link was claimed", claim_received: "🎁 Claimed from a link", claim_refunded: "↩️ Claim link refunded",
 }
 
 const when = (at: number) => {
@@ -168,7 +171,7 @@ export function historyLine(i: HistoryItem, explorerTx: (tx: string) => string):
   let label = HISTORY_LABEL[i.type]
   if (i.type === "protect_config") label = i.params.enabled === "false" ? "🛡 Protection turned off" : `🛡 Protection on (acts below ${fmtIcr(BigInt(i.params.minIcr ?? "0"))})`
   const amt = i.amount && BigInt(i.amount) > 0n ? (i.type === "protected" ? fmtBtc(BigInt(i.amount), 5) : i.asset === "BTC" ? fmtBtc(BigInt(i.amount), 5) : fmtMusd(BigInt(i.amount), 2)) : ""
-  const who = i.counterparty ? (i.type === "received" ? ` from ${esc(i.counterparty)}` : i.type === "claim_claimed" ? ` by ${esc(i.counterparty)}` : i.type === "send" ? ` to ${esc(i.counterparty)}` : i.type === "create_claim" ? ` for ${esc(i.counterparty)}` : "") : ""
+  const who = i.counterparty ? (i.type === "received" ? ` from ${esc(i.counterparty)}` : i.type === "claim_claimed" ? ` by ${esc(i.counterparty)}` : i.type === "send" || i.type === "pay_split" ? ` to ${esc(i.counterparty)}` : i.type === "create_claim" ? ` for ${esc(i.counterparty)}` : "") : ""
   const extra = i.type === "protected" && i.params.icrBefore ? ` · ${fmtIcr(BigInt(i.params.icrBefore))} → ${fmtIcr(BigInt(i.params.icrAfter))}` : ""
   const status = i.status === "pending" ? " ⏳ <i>pending</i>" : i.status === "failed" ? " ❌ <i>reverted</i>" : ""
   const memo = i.memo ? ` “${esc(i.memo)}”` : ""

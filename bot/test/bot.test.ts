@@ -1,3 +1,4 @@
+import { keyToParam } from "@keel/shared"
 import { describe, expect, it } from "vitest"
 import { E18, pct } from "@keel/shared"
 import { ADA, BOB, GUARDIAN, guardian, harness, trove } from "./helpers"
@@ -74,10 +75,17 @@ describe("bot commands", () => {
     expect(text).toContain("guarded")
   })
 
-  it("routes /start claim_ and pay_ payloads", async () => {
+  it("routes /start claim_ payloads straight to the claim screen (short base64url keys fit Telegram's 64-char limit)", async () => {
     const h = harness()
-    await h.say("/start claim_0xabc")
-    expect(buttonUrls(h.last()!.payload)[0]).toBe("https://app.example/#/claim/0xabc")
+    const param = keyToParam("0x" + "ab".repeat(32))
+    expect(`claim_${param}`.length).toBeLessThanOrEqual(64)
+    await h.say(`/start claim_${param}`)
+    expect(buttonUrls(h.last()!.payload)[0]).toBe(`https://app.example/#/claim/${param}`)
+    // the chat's menu button is pointed at the claim screen too
+    expect(h.calls.some((c) => c.method === "setChatMenuButton" && JSON.stringify(c.payload).includes(`/claim/${param}`))).toBe(true)
+    await h.say("/start claim_0xabc") // cut off by an old 70-char link
+    expect(String(h.last()!.payload.text)).toContain("incomplete")
+    expect(buttonUrls(h.last()!.payload)).toEqual([])
   })
 
   it("posts a group split request and lets a member start paying", async () => {
@@ -86,19 +94,17 @@ describe("bot commands", () => {
     h.store.setAddress(42, ADA)
     const group = { id: -100, type: "supergroup" }
     await h.say("/split 90 @bob @carol dinner", { id: 42, username: "ada", first_name: "Ada" }, group)
-    const post = String(h.last()!.payload.text)
-    expect(post).toContain("30 MUSD")
-    expect(post).toContain("⏳ @bob")
-    const reqUrl = buttonUrls(h.last()!.payload)[0]!
-    expect(reqUrl).toContain("?start=pay_")
-    const reqId = reqUrl.split("pay_")[1]!
+    const card = h.calls.filter((c) => c.method === "sendMessage" && c.payload.chat_id === -100).at(-1)!.payload
+    expect(String(card.text)).toContain("⏳ @bob · 30 MUSD")
+    expect(String(card.text)).toContain("⏳ @carol · 30 MUSD")
+    expect(String(card.text)).toContain("own share")
+    const payUrl = buttonUrls(card).find((u) => u?.includes("split_"))!
+    expect(payUrl).toMatch(/\?start=split_[A-Za-z0-9]+_0$/)
+    const param = payUrl.split("start=")[1]!
 
-    h.store.upsertUser(7, "bob", "Bob")
-    h.store.setAddress(7, BOB)
-    await h.say(`/start pay_${reqId}`, { id: 7, username: "bob", first_name: "Bob" }, { id: 7, type: "private" })
-    const intent = h.store.getIntent(buttonUrls(h.last()!.payload)[0]!.split("/i/")[1]!)!
-    expect(intent.type).toBe("pay_request")
-    expect(intent.params.to).toBe(ADA)
+    await h.say(`/start ${param}`, { id: 7, username: "bob", first_name: "Bob" }, { id: 7, type: "private" })
+    const id = param.split("_")[1]
+    expect(buttonUrls(h.last()!.payload)[0]).toBe(`https://app.example/#/split/${id}/0`)
   })
 
   it("builds protection config intents", async () => {

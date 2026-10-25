@@ -6,6 +6,7 @@ import { notifyOrQueue, type Notifier } from "./notify"
 import { esc, renderRequest } from "./format"
 import { payKeyboard } from "./bot"
 import type { LiveBus } from "./live"
+import type { Splits } from "./splits"
 
 export interface CompletionDeps {
   config: Pick<Config, "network" | "miniappUrl" | "botUsername">
@@ -13,6 +14,8 @@ export interface CompletionDeps {
   chain: ChainService
   notifier: Notifier
   live?: LiveBus
+  /** Bill splits: a confirmed pay_split marks that share paid. */
+  splits?: Splits
   /** Edits a group payment-request message. Wired to bot.api in production. */
   editMessage?: (chatId: number, messageId: number, html: string, replyMarkup?: unknown) => Promise<unknown>
 }
@@ -79,8 +82,19 @@ export function createCompletion(d: CompletionDeps) {
       }
     }
 
+    if (intent.type === "pay_split" && p.splitId) {
+      const marked = await d.splits?.markPaid(String(p.splitId), Number(p.idx), txHash)
+      if (marked === false && d.splits) {
+        // their share was already paid (another payment got there first): say so plainly
+        await notifier.send(user.tg_id, `ℹ️ Your share of <b>${esc(p.memo ?? "the split")}</b> was already marked paid, so this extra <b>${fmtMusd(BigInt(p.amount), 2)}</b> went to ${esc(p.label ?? "the requester")} as a normal payment. Ask them to send it back if it was a mistake.`, { buttonText: "View transaction", buttonUrl: url })
+        return
+      }
+    }
+
     const verbs: Partial<Record<IntentRow["type"], string>> = {
       borrow: "✅ Loan opened.", repay: "✅ Repayment confirmed.", add_collateral: "✅ Collateral added.", fund_reserve: "✅ Reserve funded.", close: "✅ Loan closed.",
+      pay_split: `✅ Paid <b>${p.amount ? fmtMusd(BigInt(p.amount), 2) : ""}</b> to ${esc(p.label ?? "the requester")} for ${esc(p.memo ?? "the split")}.`,
+      cancel_claim: "↩️ Claim link cancelled: the MUSD is back in your wallet.",
       protect_config: "✅ Protection settings saved.", send: `✅ Sent <b>${p.amount ? fmtMusd(BigInt(p.amount), 2) : ""}</b>${p.label ? " to " + esc(p.label) : ""}.`, pay_request: "✅ Payment sent.", create_claim: "🎁 Claim link created.",
     }
     const text = verbs[intent.type]

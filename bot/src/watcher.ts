@@ -7,6 +7,7 @@ import { notifyOrQueue, type Notifier } from "./notify"
 import { esc } from "./format"
 import { nameOf, receivedKey, type Completion } from "./completion"
 import type { LiveBus } from "./live"
+import type { Splits } from "./splits"
 
 /** Blocks behind the head we treat as settled: public RPC nodes disagree by a few blocks. */
 export const CONFIRMATIONS = 3n
@@ -24,6 +25,7 @@ export interface WatcherDeps {
   notifier: Notifier
   live: LiveBus
   completion: Completion
+  splits?: Splits
 }
 
 /**
@@ -84,6 +86,8 @@ export class BlockWatcher {
 
     // only now is [from, to] fully processed
     store.setKv(CURSOR, to.toString())
+    // about once an hour (sooner while someone watches): the one automatic split reminder after 24h
+    if (this.ticks % 60 === 1) await this.d.splits?.autoRemind().catch(() => undefined)
     await this.reconcileSubmitted()
     await this.liveChecks()
     return { from, to, added }
@@ -112,6 +116,8 @@ export class BlockWatcher {
     const at = await chain.blockTime(t.block)
     let added = 0
     const row = { tx: t.tx, log_index: t.logIndex, amount: t.value.toString(), block: Number(t.block), at, data: {} }
+    // a bill-split payment, made in Keel or from any wallet: mark the share paid (idempotent, once per tx)
+    if (toU) await this.d.splits?.matchTransfer(t)
 
     // sender side first: settling their intent sends the recipient a notice with the memo, which the
     // recipient side below then recognises (same dedup key) instead of sending a plainer duplicate

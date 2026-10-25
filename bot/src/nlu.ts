@@ -25,6 +25,10 @@ export interface Slots {
   /** ...or an absolute BTC price in USD. */
   priceTarget?: number
   usernames: string[]
+  /** "split 120 between everyone": a group split people join themselves. */
+  everyone?: boolean
+  /** "split 90 with ada and bob, not me": the requester pays no share. */
+  excludeMe?: boolean
   address?: string
   memo?: string
 }
@@ -283,6 +287,17 @@ function extractSlots(text: string, usernames: string[], address: string | undef
   const memo = t.match(/\bfor (?!@user\b|\d)(?:the |a |our )?([a-z][a-z0-9 ]{1,40}?)(?=$| with | to | from | and @user)/)
   if (memo && !/^(me|my loan|my debt|it|protection|everyone|the group|real)$/.test(memo[1])) slots.memo = memo[1].trim()
   if (quoted) slots.memo = quoted
+
+  // splits name people without @: "split 90 with ada, bob and chidi" (commas are spaces by now)
+  if (/\b(split|divide|share)\b/.test(t)) {
+    if (/\b(everyone|everybody|all of us|the group|whoever)\b/.test(t)) slots.everyone = true
+    if (/\b(without|not|excluding|exclude|except) me\b|\bnot including me\b/.test(t)) slots.excludeMe = true
+    const list = t.match(/\b(?:with|between|among|amongst)\s+(.+?)(?=\s+for\s|\s+without\s|\s+not\s|\s+excluding\s|\s+except\s|$)/)
+    if (list && !slots.usernames.length) {
+      const stop = /^(and|me|us|everyone|everybody|all|of|the|group|friends|them|whoever|@user|musd|usd|dollars|equally|evenly)$/
+      for (const w of list[1].split(/\s+/)) if (/^[a-z][a-z0-9_]{2,31}$/.test(w) && !stop.test(w) && !/^\d/.test(w)) slots.usernames.push(w)
+    }
+  }
 
   // bare recipient: "send 20 to ada" (Telegram usernames are 5+ chars)
   if (!slots.usernames.length && !slots.address) {

@@ -6,6 +6,7 @@ import type { IntentType, Store, UserRow } from "./db"
 import type { History } from "./history"
 import type { LiveBus } from "./live"
 import { resolveRecipient, NOT_ON_KEEL } from "./recipient"
+import type { Splits, PersonInput } from "./splits"
 
 /** Routes the redesigned Mini App uses to start actions itself and to draw the dashboard. */
 export interface AppRouteDeps {
@@ -17,6 +18,7 @@ export interface AppRouteDeps {
   priceHistory?: () => Promise<Array<[number, number]>>
   history: History
   live?: LiveBus
+  splits?: Splits
 }
 
 const uint = (v: unknown) => (typeof v === "string" && /^\d{1,40}$/.test(v) ? BigInt(v) : null)
@@ -63,7 +65,7 @@ async function coingecko7d(): Promise<Array<[number, number]>> {
 
 export function mountAppRoutes(app: Hono<any>, d: AppRouteDeps) {
   const { store, chain, auth, userOf } = d
-  for (const p of ["/api/position", "/api/activity", "/api/market", "/api/intent"]) app.use(p, auth)
+  for (const p of ["/api/position", "/api/activity", "/api/market", "/api/intent", "/api/splits", "/api/split/*", "/api/request/*"]) app.use(p, auth)
 
   app.get("/api/position", async (c) => {
     const u = userOf(c)
@@ -141,6 +143,14 @@ export function mountAppRoutes(app: Hono<any>, d: AppRouteDeps) {
         params = { to: r.address, amount: amount.toString(), label: r.label, ...(r.user ? { toTg: r.user.tg_id } : {}), memo }
         break
       }
+      case "cancel_claim": {
+        // only a link this user's own wallet created (from its LinkCreated log): the contract checks it again
+        const link = typeof b.link === "string" ? b.link.toLowerCase() : ""
+        const created = u.address ? store.eventsFor(u.address, 400).find((e) => e.kind === "link_created" && e.counterparty === link) : undefined
+        if (!created) return c.json({ error: "That isn't one of your claim links." }, 404)
+        params = { link, amount: created.amount ?? "0" }
+        break
+      }
       case "create_claim": {
         if (!amount) return c.json({ error: "Enter an amount." }, 400)
         const forName = typeof b.forName === "string" && b.forName.trim() ? b.forName.trim().slice(0, 40) : undefined
@@ -153,4 +163,63 @@ export function mountAppRoutes(app: Hono<any>, d: AppRouteDeps) {
     const intent = store.createIntent(u.tg_id, type, params)
     return c.json(intent)
   })
+
+  // ---- group payment requests (/request in a chat): a pay_<id> link opens straight on review & sign
+  app.post("/api/request/:id/pay", (c) => {
+    const u = userOf(c)
+    const r = store.getRequest(c.req.param("id"))
+    if (!r) return c.json({ error: "That payment request has expired or doesn't exist." }, 404)
+    if (r.requester_tg === u.tg_id) return c.json({ error: "That's your own request 🙂", code: "own" }, 400)
+    if (!u.address) return c.json({ error: "Link your wallet first, then pay.", code: "need_wallet" }, 400)
+    return c.json(store.createIntent(u.tg_id, "pay_request", { requestId: r.id, to: r.requester_address, amount: r.amount, memo: r.memo ?? "" }))
+  })
+
+  // ---- bill splits
+  const splits = d.splits
+  if (splits) {
+    app.get("/api/splits", (c) => {
+      const u = userOf(c)
+      return c.json({ ...splits.listFor(u), contacts: splits.contacts(u) })
+    })
+    app.post("/api/splits", async (c) => {
+      const u = userOf(c)
+      const b = (await c.req.json().catch(() => null)) as Record<string, unknown> | null
+      const total = uint(b?.total)
+      if (!b || !total) return c.json({ error: "Enter the total." }, 400)
+      const people: PersonInput[] = []
+      for (const p of Array.isArray(b.people) ? b.people.slice(0, 50) : []) {
+        const x = p as Record<string, unknown>
+        if (typeof x.raw !== "string") continue
+        const amount = uint(x.amount)
+        const bps = typeof x.bps === "number" && Number.isInteger(x.bps) ? x.bps : undefined
+        people.push({ raw: x.raw, ...(amount ? { amount } : {}), ...(bps !== undefined ? { bps } : {}) })
+      }
+      const r = await splits.create(u, {
+        total, people, includeMe: b.includeMe !== false,
+        title: typeof b.title === "string" ? b.title.slice(0, 60) : "",
+        dueAt: typeof b.dueAt === "number" && b.dueAt > 0 ? Math.floor(b.dueAt) : null,
+      })
+      if (!r.ok) return c.json({ error: r.error, code: r.code }, 400)
+      return c.json({ id: r.value.split.id, notReached: r.value.notReached })
+    })
+    app.get("/api/split/:id", (c) => {
+      const v = splits.view(c.req.param("id"), userOf(c))
+      return v ? c.json(v) : c.json({ error: "This split doesn't exist or isn't yours." }, 404)
+    })
+    app.post("/api/split/:id/pay", async (c) => {
+      const b = (await c.req.json().catch(() => ({}))) as Record<string, unknown>
+      const idx = typeof b.idx === "number" && Number.isInteger(b.idx) ? b.idx : null
+      const r = splits.startPay(c.req.param("id"), idx, userOf(c))
+      if (!r.ok) return c.json({ error: r.error, code: r.code }, r.code === "not_participant" ? 403 : 400)
+      return c.json(r.value)
+    })
+    app.post("/api/split/:id/remind", async (c) => {
+      const r = await splits.remind(c.req.param("id"), userOf(c).tg_id)
+      return r.ok ? c.json(r.value) : c.json({ error: r.error }, 400)
+    })
+    app.post("/api/split/:id/cancel", async (c) => {
+      const r = await splits.cancel(c.req.param("id"), userOf(c).tg_id)
+      return r.ok ? c.json({ ok: true }) : c.json({ error: r.error }, 400)
+    })
+  }
 }

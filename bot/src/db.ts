@@ -23,7 +23,7 @@ export interface UserRow {
   created_at: number
 }
 
-export type IntentType = "borrow" | "repay" | "add_collateral" | "fund_reserve" | "protect_config" | "send" | "create_claim" | "pay_request" | "withdraw_reserve" | "close"
+export type IntentType = "borrow" | "repay" | "add_collateral" | "fund_reserve" | "protect_config" | "send" | "create_claim" | "cancel_claim" | "pay_request" | "pay_split" | "withdraw_reserve" | "close"
 export interface IntentRow {
   id: string
   tg_id: number
@@ -49,6 +49,41 @@ export interface ChainEventRow {
   block: number
   at: number
   data: Record<string, string>
+}
+
+export interface SplitRow {
+  id: string
+  creator_tg: number
+  creator_address: string
+  title: string
+  total: string
+  /** The requester's own share when they included themselves (not requested from anyone). */
+  mine: string
+  include_me: number
+  mode: string
+  /** collecting: a group split people join with "I'm in" before it is locked. */
+  status: "collecting" | "open" | "settled" | "cancelled"
+  due_at: number | null
+  chat_id: number | null
+  message_id: number | null
+  created_at: number
+  settled_at: number | null
+}
+export interface ShareRow {
+  split_id: string
+  idx: number
+  label: string
+  /** Lowercase Telegram username, when the share was addressed to one. */
+  username: string | null
+  tg_id: number | null
+  /** Lowercase wallet address, when known (linked wallet or pasted address). */
+  address: string | null
+  amount: string
+  status: "pending" | "paid"
+  tx_hash: string | null
+  paid_at: number | null
+  reminded_at: number | null
+  auto_reminded: number
 }
 
 export interface Handoff {
@@ -104,8 +139,21 @@ const SCHEMA = `
       CREATE INDEX IF NOT EXISTS idx_events_wallet ON chain_events(wallet, block);
       CREATE TABLE IF NOT EXISTS notices (key TEXT PRIMARY KEY, at INTEGER NOT NULL);
       CREATE TABLE IF NOT EXISTS outbox (id TEXT PRIMARY KEY, tg_id INTEGER NOT NULL, html TEXT NOT NULL, opts TEXT NOT NULL DEFAULT '{}', created_at INTEGER NOT NULL);
+      CREATE TABLE IF NOT EXISTS splits (
+        id TEXT PRIMARY KEY, creator_tg INTEGER NOT NULL, creator_address TEXT NOT NULL, title TEXT NOT NULL, total TEXT NOT NULL,
+        mine TEXT NOT NULL DEFAULT '0', include_me INTEGER NOT NULL DEFAULT 1, mode TEXT NOT NULL DEFAULT 'equal', status TEXT NOT NULL DEFAULT 'open',
+        due_at INTEGER, chat_id INTEGER, message_id INTEGER, created_at INTEGER NOT NULL, settled_at INTEGER
+      );
+      CREATE TABLE IF NOT EXISTS split_shares (
+        split_id TEXT NOT NULL, idx INTEGER NOT NULL, label TEXT NOT NULL, username TEXT, tg_id INTEGER, address TEXT, amount TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending', tx_hash TEXT, paid_at INTEGER, reminded_at INTEGER, auto_reminded INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (split_id, idx)
+      );
+      CREATE INDEX IF NOT EXISTS idx_shares_tg ON split_shares(tg_id);
+      CREATE INDEX IF NOT EXISTS idx_shares_user ON split_shares(username);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_shares_tx ON split_shares(tx_hash);
 `
-const TABLES = ["users", "nonces", "intents", "requests", "alert_state", "kv", "handoffs", "chain_events", "notices", "outbox"] as const
+const TABLES = ["users", "nonces", "intents", "requests", "alert_state", "kv", "handoffs", "chain_events", "notices", "outbox", "splits", "split_shares"] as const
 
 /** A remote copy of the database (Turso/libSQL in production). */
 export interface Mirror {
@@ -303,6 +351,62 @@ export class Store {
   /** The wallet reported a broadcast transaction: remember it so the server can confirm it even if the app closes. */
   setIntentTx(id: string, txHash: string) {
     this.write("UPDATE intents SET tx_hash = ? WHERE id = ? AND status = 'pending'", txHash, id)
+  }
+
+  // ---- bill splits
+  createSplit(s: Omit<SplitRow, "created_at" | "settled_at" | "message_id">, shares: Array<Pick<ShareRow, "label" | "username" | "tg_id" | "address" | "amount">>): SplitRow {
+    this.write(
+      "INSERT INTO splits (id, creator_tg, creator_address, title, total, mine, include_me, mode, status, due_at, chat_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      s.id, s.creator_tg, s.creator_address.toLowerCase(), s.title, s.total, s.mine, s.include_me, s.mode, s.status, s.due_at, s.chat_id, now(),
+    )
+    shares.forEach((x, i) => this.addShare(s.id, i, x))
+    return this.getSplit(s.id)!
+  }
+  addShare(splitId: string, idx: number, x: Pick<ShareRow, "label" | "username" | "tg_id" | "address" | "amount">) {
+    this.write("INSERT OR IGNORE INTO split_shares (split_id, idx, label, username, tg_id, address, amount) VALUES (?, ?, ?, ?, ?, ?, ?)", splitId, idx, x.label, x.username?.toLowerCase() ?? null, x.tg_id, x.address?.toLowerCase() ?? null, x.amount)
+  }
+  getSplit(id: string): SplitRow | null {
+    return (this.db.prepare("SELECT * FROM splits WHERE id = ?").get(id) as unknown as SplitRow | undefined) ?? null
+  }
+  sharesOf(splitId: string): ShareRow[] {
+    return this.db.prepare("SELECT * FROM split_shares WHERE split_id = ? ORDER BY idx").all(splitId) as unknown as ShareRow[]
+  }
+  updateSplit(id: string, patch: Partial<Pick<SplitRow, "status" | "message_id" | "chat_id" | "settled_at" | "mine" | "total">>) {
+    for (const [k, v] of Object.entries(patch)) this.write(`UPDATE splits SET ${k} = ? WHERE id = ?`, v as SQLInputValue, id)
+  }
+  updateShare(splitId: string, idx: number, patch: Partial<Pick<ShareRow, "amount" | "tg_id" | "address" | "reminded_at" | "auto_reminded">>) {
+    for (const [k, v] of Object.entries(patch)) this.write(`UPDATE split_shares SET ${k} = ? WHERE split_id = ? AND idx = ?`, v as SQLInputValue, splitId, idx)
+  }
+  /** Idempotent: only a pending share becomes paid, and one transaction can pay only one share. */
+  markSharePaid(splitId: string, idx: number, txHash: string): boolean {
+    if (this.db.prepare("SELECT 1 FROM split_shares WHERE tx_hash = ?").get(txHash.toLowerCase())) return false
+    return Number(this.write("UPDATE split_shares SET status = 'paid', tx_hash = ?, paid_at = ? WHERE split_id = ? AND idx = ? AND status = 'pending'", txHash.toLowerCase(), now(), splitId, idx).changes) > 0
+  }
+  shareByTx(txHash: string): (ShareRow & { title: string; creator_tg: number }) | null {
+    return (this.db.prepare("SELECT s.*, p.title, p.creator_tg FROM split_shares s JOIN splits p ON p.id = s.split_id WHERE s.tx_hash = ?").get(txHash.toLowerCase()) as unknown as (ShareRow & { title: string; creator_tg: number }) | undefined) ?? null
+  }
+  /** Pending shares owed to `creatorAddress` for exactly this amount, in open splits (on-chain payment matching). */
+  pendingSharesTo(creatorAddress: string, amount: string): ShareRow[] {
+    return this.db.prepare(
+      "SELECT s.* FROM split_shares s JOIN splits p ON p.id = s.split_id WHERE p.creator_address = ? AND p.status = 'open' AND s.status = 'pending' AND s.amount = ? ORDER BY p.created_at, s.idx",
+    ).all(creatorAddress.toLowerCase(), amount) as unknown as ShareRow[]
+  }
+  splitsCreatedBy(tgId: number, limit = 30): SplitRow[] {
+    return this.db.prepare("SELECT * FROM splits WHERE creator_tg = ? ORDER BY created_at DESC LIMIT ?").all(tgId, limit) as unknown as SplitRow[]
+  }
+  /** Splits where this person has a share (by Telegram id, username, or linked wallet). */
+  splitsOwedBy(u: { tg_id: number; username: string | null; address: string | null }, limit = 30): SplitRow[] {
+    return this.db.prepare(
+      `SELECT DISTINCT p.* FROM splits p JOIN split_shares s ON s.split_id = p.id
+       WHERE p.creator_tg != ? AND (s.tg_id = ? OR (s.username IS NOT NULL AND s.username = ?) OR (s.address IS NOT NULL AND s.address = ?))
+       ORDER BY p.created_at DESC LIMIT ?`,
+    ).all(u.tg_id, u.tg_id, (u.username ?? "").toLowerCase(), (u.address ?? "").toLowerCase(), limit) as unknown as SplitRow[]
+  }
+  /** Unpaid shares in open splits created before `before` that haven't had their automatic reminder yet. */
+  sharesDueForAutoReminder(before: number): Array<ShareRow & { title: string; creator_tg: number }> {
+    return this.db.prepare(
+      "SELECT s.*, p.title, p.creator_tg FROM split_shares s JOIN splits p ON p.id = s.split_id WHERE p.status = 'open' AND s.status = 'pending' AND s.auto_reminded = 0 AND s.tg_id IS NOT NULL AND p.created_at < ?",
+    ).all(before) as unknown as Array<ShareRow & { title: string; creator_tg: number }>
   }
 
   // ---- notification dedup: a notice key is claimed exactly once, across restarts

@@ -1,6 +1,6 @@
 import { Bot, InlineKeyboard, type Context } from "grammy"
 import {
-  E18, DEFAULT_BORROW, DEFAULT_BORROW_ICR, faucetUrl, GAS_BUFFER, SUGGESTED_RESERVE, closeCost, maxPartialRepay, explorerTx, fmtBtc, fmtIcr, fmtMusd, pct, quoteBorrow, riskLevel, RISK_EMOJI, parseUnits18,
+  E18, DEFAULT_BORROW, DEFAULT_BORROW_ICR, faucetUrl, parseStartParam, GAS_BUFFER, SUGGESTED_RESERVE, closeCost, maxPartialRepay, explorerTx, fmtBtc, fmtIcr, fmtMusd, pct, quoteBorrow, riskLevel, RISK_EMOJI, parseUnits18,
 } from "@keel/shared"
 import type { Config } from "./config"
 import type { Store, UserRow, IntentRow, IntentType } from "./db"
@@ -11,6 +11,7 @@ import { mountChat } from "./chat"
 import { NOT_ON_KEEL, resolveRecipient } from "./recipient"
 import { History } from "./history"
 import { TelegramNotifier, flushOutbox } from "./notify"
+import { Splits, parseSplitArgs, type PersonInput } from "./splits"
 
 export interface Deps {
   config: Config
@@ -18,11 +19,13 @@ export interface Deps {
   chain: ChainService
   /** The shared history feed (intents + on-chain ledger); built here when not given (tests). */
   history?: History
+  /** Bill splits; built here when not given (tests). */
+  splits?: Splits
 }
 
 /** Everything a user can do. Slash commands and the natural-language layer both call these, so they behave identically. */
 export interface Actions {
-  needWallet(ctx: Context, user: UserRow): Promise<`0x${string}` | null>
+  needWallet(ctx: Context, user: UserRow, opts?: { allowGroup?: boolean }): Promise<`0x${string}` | null>
   start(ctx: Context, user: UserRow): Promise<void>
   help(ctx: Context): Promise<void>
   linkWallet(ctx: Context, user: UserRow): Promise<void>
@@ -44,7 +47,7 @@ export interface Actions {
   send(ctx: Context, user: UserRow, a: { to: Recipient; amount: bigint; memo?: string }): Promise<void>
   claimLink(ctx: Context, user: UserRow, a: { amount: bigint; forName?: string }): Promise<void>
   request(ctx: Context, user: UserRow, a: { amount: bigint; memo?: string | null }): Promise<void>
-  split(ctx: Context, user: UserRow, a: { total: bigint; names: string[]; memo?: string | null }): Promise<void>
+  split(ctx: Context, user: UserRow, a: { total: bigint; names: string[]; memo?: string | null; people?: PersonInput[]; includeMe?: boolean; dueAt?: number | null }): Promise<void>
   balance(ctx: Context, user: UserRow): Promise<void>
   history(ctx: Context, user: UserRow, offset?: number): Promise<void>
 }
@@ -53,6 +56,12 @@ export function createBot(deps: Deps, bot = new Bot(deps.config.botToken)): Bot 
   const { config, store, chain } = deps
   const history = deps.history ?? new History({ config, store, chain })
   const notifier = new TelegramNotifier(bot.api)
+  const splits = deps.splits ?? new Splits({ config, store, notifier })
+  // the split card is posted and edited by the bot itself
+  splits.attach({
+    post: async (chatId, html, markup) => (await bot.api.sendMessage(chatId, html, { parse_mode: "HTML", reply_markup: markup as never, link_preview_options: { is_disabled: true } })).message_id,
+    edit: async (chatId, messageId, html, markup) => void (await bot.api.editMessageText(chatId, messageId, html, { parse_mode: "HTML", reply_markup: markup as never, link_preview_options: { is_disabled: true } }).catch((e: Error) => { if (!/not modified/.test(e.message)) throw e })),
+  })
 
   // Anyone who talks to the bot can be reached now: deliver what was queued while Telegram wouldn't let us
   // (they never pressed Start, or had blocked the bot). After the handler, so its reply comes first.
@@ -108,7 +117,13 @@ export function createBot(deps: Deps, bot = new Bot(deps.config.botToken)): Bot 
 
   const actions: Actions = {
     /** Account actions need DM + a linked wallet. Returns the address, or null after replying. */
-    async needWallet(ctx, user) {
+    async needWallet(ctx, user, opts) {
+      // a group split is public by design (the card lists who owes what); everything else stays private
+      if (!isPrivate(ctx) && opts?.allowGroup) {
+        if (user.address) return user.address as `0x${string}`
+        await ctx.reply("Link your wallet with me in private first, then split here 👉", { reply_markup: new InlineKeyboard().url("Open Keel", dm()) })
+        return null
+      }
       if (!isPrivate(ctx)) {
         await ctx.reply("This one is about your money, so let's do it in private 👉", { reply_markup: new InlineKeyboard().url("Open Keel", dm()) })
         return null
@@ -356,10 +371,12 @@ export function createBot(deps: Deps, bot = new Bot(deps.config.botToken)): Bot 
       await postRequest(ctx, user, amount, memo || null, null)
     },
 
-    async split(ctx, user, { total, names, memo = null }) {
-      if (names.length === 0) throw new UserError("Mention the people to split with, e.g. /split 90 @ada @bob")
-      const share = total / BigInt(names.length + 1)
-      await postRequest(ctx, user, share, memo ? `${memo} (split ${names.length + 1} ways)` : `split ${names.length + 1} ways`, names.map((username) => ({ username })))
+    async split(ctx, user, { total, names, memo = null, people, includeMe = true, dueAt = null }) {
+      if (!(await actions.needWallet(ctx, user, { allowGroup: true }))) return
+      const list = people ?? names.map((n) => ({ raw: "@" + n.replace(/^@/, "") }))
+      if (!list.length && isPrivate(ctx)) throw new UserError("Who's in? e.g. /split 90 @ada @bob dinner (in a group, leave names out and people tap I'm in).")
+      const r = await splits.create(user, { total, title: memo ?? "", people: list, includeMe, dueAt, chatId: ctx.chat?.id ?? user.tg_id })
+      if (!r.ok) throw new UserError(r.error)
     },
   }
 
@@ -368,11 +385,19 @@ export function createBot(deps: Deps, bot = new Bot(deps.config.botToken)): Bot 
   bot.command("start", handler(async (ctx, user) => {
     const payload = args(ctx).trim()
     if (payload.startsWith("pay_")) return void (await startPay(ctx, user, payload.slice(4)))
-    if (payload.startsWith("claim_")) {
-      return void (await ctx.reply("🎁 Someone sent you MUSD. Tap to claim — you'll get a wallet-connect prompt and the funds arrive in one step.", {
-        reply_markup: signButton("Claim MUSD", `/claim/${payload.slice(6)}`),
-      }))
+    const target = parseStartParam(payload)
+    // Fallback for t.me/<bot>?start=… links: open the Mini App on that screen in one tap. The big menu button at the
+    // bottom of this chat is pointed at the same screen too, until the next plain /start.
+    if (target.kind === "claim" || target.kind === "split") {
+      const hash = target.kind === "claim" ? `/claim/${payload.slice(6)}` : `/split/${target.id}${target.idx === null ? "" : "/" + target.idx}`
+      const label = target.kind === "claim" ? "🎁 Claim MUSD" : "🧾 Open & pay"
+      if (isPrivate(ctx)) await bot.api.setChatMenuButton({ chat_id: ctx.chat!.id, menu_button: { type: "web_app", text: label.slice(3), web_app: { url: miniapp(hash) } } }).catch(() => undefined)
+      const text = target.kind === "claim"
+        ? target.key ? "🎁 <b>Someone sent you MUSD.</b> Tap below to see how much and claim it. No wallet yet? You can create one in the next step." : "⚠️ This claim link is incomplete. Ask the sender to share it again."
+        : "🧾 <b>You've been asked to pay a share of a bill.</b> Tap below to see the details and pay."
+      return void (await ctx.reply(text, { parse_mode: "HTML", reply_markup: target.kind === "claim" && !target.key ? undefined : signButton(label, hash) }))
     }
+    if (isPrivate(ctx)) await bot.api.setChatMenuButton({ chat_id: ctx.chat!.id }).catch(() => undefined)
     await actions.start(ctx, user)
   }))
   bot.command("help", handler((ctx) => actions.help(ctx)))
@@ -487,11 +512,41 @@ export function createBot(deps: Deps, bot = new Bot(deps.config.botToken)): Bot 
     await actions.request(ctx, user, { amount: parseAmount(amt, "amount (in MUSD)"), memo: memo.join(" ") || null })
   }))
   bot.command("split", handler(async (ctx, user) => {
-    const [amt, ...rest] = splitArgs(args(ctx))
-    const total = parseAmount(amt, "total (in MUSD)")
-    const names = rest.filter((t) => t.startsWith("@")).map((t) => t.slice(1))
-    await actions.split(ctx, user, { total, names, memo: rest.filter((t) => !t.startsWith("@")).join(" ") || null })
+    let parsed: ReturnType<typeof parseSplitArgs>
+    try {
+      parsed = parseSplitArgs(args(ctx))
+    } catch (e) {
+      throw new UserError((e as Error).message)
+    }
+    await actions.split(ctx, user, { total: parsed.total, names: [], people: parsed.people, memo: parsed.title || null, includeMe: parsed.includeMe, dueAt: parsed.dueAt })
   }))
+  // the split card's buttons
+  bot.callbackQuery(/^split:(join|lock|remind|cancel):([A-Za-z0-9]{4,16})$/, async (ctx) => {
+    const user = remember(ctx)
+    const [, action, id] = ctx.match as RegExpMatchArray
+    if (action === "join") {
+      const r = await splits.join(id, user)
+      return void (await ctx.answerCallbackQuery({ text: r.ok ? r.value : r.error, show_alert: !r.ok }))
+    }
+    if (action === "lock") {
+      const r = await splits.lock(id, user.tg_id)
+      return void (await ctx.answerCallbackQuery({ text: r.ok ? "Locked: everyone's been asked to pay ✅" : r.error, show_alert: !r.ok }))
+    }
+    if (action === "cancel") {
+      const r = await splits.cancel(id, user.tg_id)
+      return void (await ctx.answerCallbackQuery({ text: r.ok ? "Cancelled" : r.error, show_alert: !r.ok }))
+    }
+    const r = await splits.remind(id, user.tg_id)
+    if (!r.ok) return void (await ctx.answerCallbackQuery({ text: r.error, show_alert: true }))
+    const v = r.value
+    const parts = [
+      v.reminded.length ? `Reminded ${v.reminded.join(", ")}.` : "",
+      v.queued.length ? `${v.queued.join(", ")} will see it when they open Keel.` : "",
+      v.skipped.length ? `${v.skipped.join(", ")} was reminded less than an hour ago.` : "",
+      v.links.length ? `${v.links.map((l) => l.label).join(", ")} isn't on Keel yet: send them their pay link.` : "",
+    ].filter(Boolean)
+    await ctx.answerCallbackQuery({ text: parts.join(" ").slice(0, 190) || "Nothing to remind.", show_alert: true })
+  })
 
   async function startPay(ctx: Context, user: UserRow, requestId: string) {
     const r = store.getRequest(requestId)

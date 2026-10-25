@@ -15,6 +15,7 @@ import { esc } from "./format"
 import { notifyOrQueue } from "./notify"
 import { LiveBus, RateLimiter } from "./live"
 import { History } from "./history"
+import type { Splits } from "./splits"
 
 export interface ApiDeps {
   config: Config
@@ -29,6 +30,7 @@ export interface ApiDeps {
   live?: LiveBus
   completion?: Completion
   history?: History
+  splits?: Splits
 }
 
 export const bindMessage = (tgId: number, nonce: string) => `Link this wallet to Keel (Telegram account ${tgId}).\nNonce: ${nonce}`
@@ -39,7 +41,7 @@ const HANDOFF_HEADER = "x-keel-handoff"
 export function createApi(d: ApiDeps) {
   const { config, store, chain, notifier } = d
   const live = d.live ?? new LiveBus()
-  const completion = d.completion ?? createCompletion({ config, store, chain, notifier, live, editMessage: d.editMessage })
+  const completion = d.completion ?? createCompletion({ config, store, chain, notifier, live, splits: d.splits, editMessage: d.editMessage })
   const history = d.history ?? new History({ config, store, chain })
   const app = new Hono<{ Variables: { tg: InitData } }>()
   const miniappOrigin = (() => {
@@ -71,12 +73,22 @@ export function createApi(d: ApiDeps) {
   )
 
   // ---- claim links (no Telegram auth: the link key is the credential)
+  // Public: the link address is derived from the key, which never reaches this server.
   app.get("/api/claim/:link", async (c) => {
     const link = c.req.param("link")
-    if (!isAddress(link) || !d.relayer) return c.json({ error: "bad request" }, 400)
-    const info = await d.relayer.link(link as Address)
-    if (!info) return c.json({ error: "unknown link" }, 404)
-    return c.json({ sender: info.sender, amount: info.amount.toString(), expiry: info.expiry, settled: info.settled })
+    if (!isAddress(link) || !d.relayer) return c.json({ error: "This claim link isn't valid." }, 400)
+    const info = await d.relayer.link(link as Address).catch(() => null)
+    if (!info) return c.json({ error: "This claim link doesn't exist on this network. Check you opened the whole link.", code: "unknown" }, 404)
+    const sender = store.findByAddress(info.sender)
+    let status: "open" | "claimed" | "cancelled" | "expired" = info.settled ? "claimed" : info.expiry * 1000 < Date.now() ? "expired" : "open"
+    let claimedBy: string | null = null
+    if (info.settled && sender?.address) {
+      const evs = store.eventsFor(sender.address, 400)
+      const cl = evs.find((e) => e.kind === "link_claimed" && e.data.link?.toLowerCase() === link.toLowerCase())
+      if (cl?.counterparty) claimedBy = nameOf(store.findByAddress(cl.counterparty), cl.counterparty)
+      else if (evs.some((e) => e.kind === "link_cancelled" && e.counterparty === link.toLowerCase())) status = "cancelled"
+    }
+    return c.json({ sender: info.sender, senderName: sender ? nameOf(sender) : null, amount: info.amount.toString(), expiry: info.expiry, settled: info.settled, status, claimedBy })
   })
 
   app.post("/api/claim/relay", async (c) => {
@@ -103,8 +115,15 @@ export function createApi(d: ApiDeps) {
       return c.json({ txHash: tx })
     } catch (e) {
       const msg = (e as Error).message
-      const friendly = /LinkSettled/.test(msg) ? "This link was already claimed or cancelled." : /Expired/.test(msg) ? "This link has expired." : /BadSignature/.test(msg) ? "That link key is not valid." : /LinkUnknown/.test(msg) ? "Unknown link." : "Could not claim right now."
-      return c.json({ error: friendly }, 400)
+      if (/insufficient funds|gas required exceeds/i.test(msg)) {
+        // the relayer pays the gas for claims: tell the admins once an hour, and the claimer what's going on
+        if (store.claimNotice(`relayer-gas:${Math.floor(Date.now() / 3_600_000)}`)) {
+          for (const id of config.adminIds) await notifier.send(id, "⛽ <b>Claim relayer is out of gas</b>: a claim just failed. Send testnet BTC to the relayer (keeper) wallet; see /status.").catch(() => undefined)
+        }
+        return c.json({ error: "Claims are paused for a few minutes while Keel refuels its gas wallet. Your link still works: try again shortly.", code: "relayer_gas" }, 503)
+      }
+      const friendly = /LinkSettled/.test(msg) ? "This link was already claimed or cancelled." : /Expired/.test(msg) ? "This link has expired: the MUSD goes back to the sender." : /BadSignature/.test(msg) ? "That link key is not valid: open the whole link again." : /LinkUnknown/.test(msg) ? "This claim link doesn't exist on this network." : "Could not claim right now. Please try again."
+      return c.json({ error: friendly, code: /LinkSettled/.test(msg) ? "settled" : /Expired/.test(msg) ? "expired" : "failed" }, 400)
     }
   })
 
@@ -144,7 +163,7 @@ export function createApi(d: ApiDeps) {
     return handoffOf(c) ? (store.getUser(user.id) ?? store.upsertUser(user.id)) : store.upsertUser(user.id, user.username, user.first_name)
   }
   if (d.premium) mountPremium(app, { config, premium: d.premium, auth: auth as never, tgIdOf: ((c: Context) => tgOf(c).user.id) as never, onGranted: (tgId, until) => void notifier.send(tgId, `⭐ <b>Keel Premium is on</b> until ${new Date(until * 1000).toISOString().slice(0, 10)}: your loan is now checked every few seconds instead of minutes.`) })
-  mountAppRoutes(app, { store, chain, auth: auth as never, userOf, history, live })
+  mountAppRoutes(app, { store, chain, auth: auth as never, userOf, history, live, splits: d.splits })
 
   // ---- live updates: the app trades its Telegram auth for a short-lived token, then opens an EventSource
   const streamLimit = new RateLimiter(30, 60_000)

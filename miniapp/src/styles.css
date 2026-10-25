@@ -376,3 +376,44 @@ a.btn { text-decoration: none; }
   .top { gap: 8px; }
 }
 .preview-pill { align-self: flex-start; display: inline-block; margin-bottom: 6px; padding: 4px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; letter-spacing: 0.02em; color: var(--red-text); background: var(--red-soft); border: 1px solid rgba(225, 6, 0, 0.25); }
+
+/* ---- bill splits ---- */
+.pill-off { color: var(--muted); background: rgba(0, 0, 0, 0.04); border-color: var(--stroke-2); }
+.toggle-row { align-items: center; font-size: 14px; font-weight: 600; }
+.chip-input { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 8px 10px; border-radius: 14px; border: 1px solid var(--stroke-2); background: rgba(255, 255, 255, 0.8); }
+.chip-input:focus-within { border-color: var(--red); }
+.chip-input input { flex: 1; min-width: 120px; border: 0; padding: 6px 2px; background: transparent; font: inherit; font-size: 15px; color: var(--fg); outline: none; }
+.chip { display: inline-flex; align-items: center; gap: 4px; padding: 5px 10px; border-radius: 999px; background: #0a0a0a; color: #fff; font-size: 13px; font-weight: 650; }
+.chip button { border: 0; background: transparent; color: rgba(255, 255, 255, 0.75); font-size: 16px; line-height: 1; padding: 0 0 0 2px; cursor: pointer; }
+.chip.ghost { background: rgba(0, 0, 0, 0.04); color: var(--fg); border: 1px solid var(--stroke-2); cursor: pointer; }
+.chips-suggest { display: flex; flex-wrap: wrap; gap: 6px; }
+.share-preview { display: grid; gap: 2px; padding: 6px 12px; border-radius: 14px; background: rgba(0, 0, 0, 0.03); border: 1px solid var(--stroke); }
+.share-line { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; align-items: center; padding: 7px 0; font-size: 14px; }
+.share-line + .share-line { border-top: 1px solid var(--stroke); }
+.share-line span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.share-line.me span, .share-line.sum span { color: var(--muted); }
+.share-line.sum { font-weight: 750; }
+.share-line b { font-variant-numeric: tabular-nums; }
+.share-input { width: 72px; padding: 6px 8px; border-radius: 10px; border: 1px solid var(--stroke-2); font: inherit; font-size: 14px; text-align: right; background: #fff; }
+.split-hero .glass-body { gap: 4px; }
+.progress { height: 8px; border-radius: 999px; background: rgba(0, 0, 0, 0.07); overflow: hidden; margin-top: 10px; }
+.progress span { display: block; height: 100%; background: linear-gradient(90deg, #0a0a0a, var(--red)); border-radius: inherit; transition: width 0.8s var(--ease); }
+.pay-share .glass-body { gap: 4px; }
+.share-row { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto auto auto; gap: 10px; align-items: center; padding: 10px 2px; border-top: 1px solid var(--stroke); }
+.share-row:first-of-type { border-top: 0; }
+.share-dot { width: 30px; height: 30px; border-radius: 10px; display: grid; place-items: center; background: rgba(0, 0, 0, 0.05); font-size: 13px; }
+.share-dot.paid { background: #0a0a0a; color: #fff; }
+.share-name { display: grid; min-width: 0; font-weight: 650; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.share-name small { font-weight: 500; font-size: 12px; color: var(--muted); }
+.share-row.pending .share-name small { color: var(--red-text); }
+.share-row b { font-variant-numeric: tabular-nums; font-size: 14px; }
+.share-tx { color: var(--muted); display: grid; place-items: center; }
+.share-send { font-size: 12px; white-space: nowrap; }
+.split-item { width: 100%; background: transparent; border-left: 0; border-right: 0; border-bottom: 0; text-align: left; cursor: pointer; font: inherit; }
+.act-actions { display: flex; justify-content: flex-end; gap: 14px; padding: 0 2px 10px 54px; margin-top: -4px; }
+.link-btn.danger { color: var(--red-text); }
+.qr { width: 180px; margin: 10px auto 0; padding: 8px; background: #fff; border-radius: 12px; }
+@media (max-width: 360px) {
+  .share-row { grid-template-columns: 26px minmax(0, 1fr) auto auto; }
+  .share-row .share-tx { display: none; }
+}

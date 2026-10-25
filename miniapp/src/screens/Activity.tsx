@@ -5,6 +5,7 @@ import { Button, Glass, MezoBadge, Skeleton, StateView } from "../ui/kit"
 import { ActivityRow, explorerFor, useNewRows } from "../ui/activity"
 import { shortError } from "../components"
 import type { AppCtx } from "../App"
+import { SplitsSection } from "./Split"
 
 export function Activity({ ctx }: { ctx: AppCtx }) {
   const [limit, setLimit] = useState(30)
@@ -13,6 +14,7 @@ export function Activity({ ctx }: { ctx: AppCtx }) {
   return (
     <>
       <Header title="Activity" greeting="History" />
+      <SplitsSection />
       {q.isLoading ? (
         <Glass>{[0, 1, 2, 3, 4].map((i) => <Skeleton key={i} h={48} style={{ margin: "10px 0" }} />)}</Glass>
       ) : q.error ? (

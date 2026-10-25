@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto"
 
 /** What changed. The Mini App refetches what it shows; `toast` is a ready-to-show line for the user. */
 export interface LiveEvent {
-  reason: "received" | "sent" | "tx_confirmed" | "tx_failed" | "tx_submitted" | "protected" | "position" | "balance" | "price" | "link_claimed" | "link_cancelled" | "hello"
+  reason: "received" | "sent" | "tx_confirmed" | "tx_failed" | "tx_submitted" | "protected" | "position" | "balance" | "price" | "link_claimed" | "link_cancelled" | "split" | "hello"
   tx?: string
   intentId?: string
   toast?: string

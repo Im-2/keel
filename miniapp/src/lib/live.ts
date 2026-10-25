@@ -180,6 +180,8 @@ export function invalidationsFor(u: LiveUpdate): string[][] {
       return [["position"], ["activity"]]
     case "tx_submitted":
       return [["activity"]]
+    case "split":
+      return [["splits"], ["split"], ["activity"]]
     default:
       return [["position"], ["activity"], ...(u.intentId ? [["intent", u.intentId]] : [])]
   }

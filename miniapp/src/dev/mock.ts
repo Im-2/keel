@@ -31,6 +31,19 @@ const activity = {
     row("a5", "fund_reserve", BigInt(s(0.005)), { asset: "BTC", at: now - 90000 }),
   ],
 }
+const sh = (idx: number, label: string, amount: string, paid: boolean, isMe = false) => ({ idx, label, amount, status: paid ? "paid" : "pending", tx: paid ? "0x" + "ab".repeat(32) : null, paidAt: paid ? now - 300 : null, isMe, ...(paid ? {} : { link: `https://t.me/KeelMezoBot/app?startapp=split_Sp1itAbc_${idx}` }) })
+const split = {
+  id: "Sp1itAbc", title: "Dinner", total: (100n * E).toString(), mine: "0", includeMe: false, status: "open", dueAt: now + 3 * 86400, createdAt: now - 3600,
+  creator: { name: "@Nuelcrypt", isMe: true },
+  shares: [sh(0, "@bob", "33340000000000000000", true), sh(1, "@chidi", "33330000000000000000", false), sh(2, "@eve_x", "33330000000000000000", false)],
+  collected: "33340000000000000000", remaining: "66660000000000000000", myShare: null,
+}
+const owed = {
+  id: "Ow3dXyz", title: "Taxi", total: (40n * E).toString(), mine: (20n * E).toString(), includeMe: true, status: "open", dueAt: null, createdAt: now - 7200,
+  creator: { name: "@big_beccaa", isMe: false },
+  shares: [{ idx: 0, label: "@Nuelcrypt", amount: (20n * E).toString(), status: "pending", tx: null, paidAt: null, isMe: true }],
+  collected: "0", remaining: (20n * E).toString(), myShare: 0,
+}
 const intents: Record<string, unknown> = {
   demo: { id: "demo", tg_id: 1, type: "send", params: { to: "0x00000000000000000000000000000000000000b2", amount: (25n * E).toString(), label: "@bob", memo: "Lunch" }, status: "pending" },
 }
@@ -80,7 +93,13 @@ export function installMock() {
     if (path === "/api/activity") return json(activity)
     if (path.startsWith("/api/intent/")) return json(intents[path.split("/")[3]] ?? { error: "not found" }, intents[path.split("/")[3]] ? 200 : 404)
     if (path === "/api/intent") return json({ error: "Preview mode: signing is disabled." }, 400)
-    if (path.startsWith("/api/claim/")) return json({ sender: position.address, amount: (50n * E).toString(), expiry: now + 3600, settled: false })
+    if (path.startsWith("/api/claim/")) return json({ sender: position.address, senderName: "@Nuelcrypt", amount: (20n * E).toString(), expiry: now + 2 * 86400, settled: false, status: q.has("claimed") ? "claimed" : "open", claimedBy: q.has("claimed") ? "@bob" : null })
+    if (path === "/api/splits" && (!init?.method || init.method === "GET")) return json({ created: [split], owed: [owed], contacts: ["@bob", "@chidi", "@big_beccaa"] })
+    if (path === "/api/splits") return json({ id: "Sp1itAbc", notReached: ["@eve_x"] })
+    if (path.startsWith("/api/split/") && path.endsWith("/remind")) return json({ reminded: ["@chidi"], queued: [], links: [{ label: "@eve_x", link: "https://t.me/KeelMezoBot/app?startapp=split_Sp1itAbc_2" }], skipped: [] })
+    if (path.startsWith("/api/split/") && path.endsWith("/pay")) return json({ error: "Preview mode: signing is disabled." }, 400)
+    if (path.startsWith("/api/split/Ow3dXyz")) return json(owed)
+    if (path.startsWith("/api/split/")) return json(split)
     if (path === "/api/handoff") return json({ token: "tok123", expires: now + 600, url: `${location.origin}/?w=tok123&r=link` })
     if (path === "/api/live/token") return json({ token: "mock", url: "/api/live" })
     if (path === "/api/premium") return json({ active: false, until: 0, priceMusd: "1", days: 30 })

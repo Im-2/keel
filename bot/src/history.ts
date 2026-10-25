@@ -11,7 +11,7 @@ export interface HistoryItem {
   id: string
   type:
     | "borrow" | "repay" | "add_collateral" | "fund_reserve" | "withdraw_reserve" | "protect_config" | "close" | "protected"
-    | "send" | "received" | "pay_request" | "create_claim" | "claim_claimed" | "claim_received" | "claim_refunded"
+    | "send" | "received" | "pay_request" | "pay_split" | "create_claim" | "claim_claimed" | "claim_received" | "claim_refunded"
   /** pending: broadcast, waiting for a receipt. failed: mined but reverted. */
   status: "confirmed" | "pending" | "failed"
   /** 18-decimal integer string. */
@@ -61,6 +61,7 @@ export class History {
     const items: HistoryItem[] = []
     for (const i of intents) {
       const it = this.fromIntent(i, byTx)
+      if (it?.type === "create_claim" && it.tx) Object.assign(it.params, this.linkStatus(it.tx, events))
       if (it) items.push(it)
     }
     for (const e of events) {
@@ -81,19 +82,30 @@ export class History {
     let amount: string | null = str("amount") || null
     if (i.type === "pay_request" && amount) amount = parseUnits18(amount).toString() // stored as a decimal string
     const onChain = i.tx_hash ? byTx.get(i.tx_hash.toLowerCase()) : undefined
-    const type: HistoryItem["type"] = i.type === "withdraw_reserve" ? "withdraw_reserve" : (i.type as HistoryItem["type"])
+    const type: HistoryItem["type"] = i.type === "cancel_claim" ? "claim_refunded" : (i.type as HistoryItem["type"])
     return {
       id: i.id,
       type,
       status: i.status === "done" ? "confirmed" : i.status === "failed" ? "failed" : "pending",
       amount,
       asset: BTC_TYPES.has(i.type) ? "BTC" : i.type === "protect_config" || i.type === "close" ? null : "MUSD",
-      counterparty: i.type === "send" ? str("label") || null : i.type === "create_claim" ? str("forName") || null : null,
+      counterparty: i.type === "send" || i.type === "pay_split" ? str("label") || null : i.type === "create_claim" ? str("forName") || null : null,
       memo: str("memo") || null,
       tx: i.tx_hash,
       at: onChain?.[0]?.at ?? i.created_at,
       params: Object.fromEntries(Object.entries(p).map(([k, v]) => [k, String(v)])),
     }
+  }
+
+  /** A claim link the user made: its address (from the LinkCreated log) and whether it was claimed or cancelled. */
+  private linkStatus(tx: string, events: ChainEventRow[]): Record<string, string> {
+    const created = events.find((e) => e.tx === tx.toLowerCase() && e.kind === "link_created")
+    if (!created?.counterparty) return {}
+    const link = created.counterparty
+    const claimed = events.find((e) => e.kind === "link_claimed" && e.data.link?.toLowerCase() === link)
+    if (claimed) return { link, linkStatus: "claimed", claimedBy: claimed.counterparty ? nameOf(this.d.store.findByAddress(claimed.counterparty), claimed.counterparty) : "someone" }
+    if (events.some((e) => e.kind === "link_cancelled" && e.counterparty === link)) return { link, linkStatus: "cancelled" }
+    return { link, linkStatus: "open" }
   }
 
   private fromEvent(e: ChainEventRow, sameTx: ChainEventRow[], guardian: Address | null): HistoryItem | null {
@@ -107,7 +119,10 @@ export class History {
       case "transfer_in":
         if (own) return { ...base, type: "borrow", counterparty: null }
         if (cp === pay) return sameTx.some((x) => x.kind === "link_cancelled") ? { ...base, type: "claim_refunded", counterparty: null } : { ...base, type: "claim_received", counterparty: null }
-        return { ...base, type: "received", counterparty: who }
+        {
+          const share = store.shareByTx(e.tx)
+          return { ...base, type: "received", counterparty: who, memo: share ? `${share.title} · split` : null }
+        }
       case "transfer_out":
         if (own) return { ...base, type: "repay", counterparty: null }
         if (cp === pay) return sameTx.some((x) => x.kind === "link_created") ? null : { ...base, type: "create_claim", counterparty: null }

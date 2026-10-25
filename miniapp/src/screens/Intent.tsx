@@ -2,6 +2,8 @@ import { useEffect, useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import type { Hex, WalletClient } from "viem"
 import { ApiError, api, tg, type ActivityItem, type IntentDto } from "../lib/api"
+import { claimKeyFor } from "../lib/claimkeys"
+import { ShareClaim } from "../ui/share"
 import { TxRevertedError, pendingItem, settle, txFailureReason, upsertTop, waitForSuccess } from "../lib/tx"
 import { buildPlan, type Plan } from "../lib/plan"
 import { go, useRefreshAll } from "../lib/data"
@@ -27,7 +29,9 @@ export function Intent({ ctx, id }: { ctx: AppCtx; id?: string }) {
   if (intent.status !== "pending") {
     const link = intent.tx_hash ? <a className="tx-link" href={`${explorerFor(ctx.cfg.network)}/tx/${intent.tx_hash}`} target="_blank" rel="noreferrer">View transaction <IconExternal size={14} /></a> : null
     return intent.status === "done"
-      ? <StateView kind="success" title="Already done" body={<>This was confirmed on Mezo. {link}</>} action={<Button onClick={() => go("/activity")}>Open activity</Button>} />
+      ? intent.type === "create_claim" && claimKeyFor(intent.id)
+        ? <ShareClaim cfg={ctx.cfg} keyHex={claimKeyFor(intent.id)!} amount={big(intent.params.amount)} forName={intent.params.forName} />
+        : <StateView kind="success" title="Already done" body={<>This was confirmed on Mezo. {link}</>} action={<Button onClick={() => go("/activity")}>Open activity</Button>} />
       : <StateView kind="error" title="This one failed" body={<>Nothing was sent. Start it again from the chat or the Pay tab. {link}</>} action={<Button onClick={() => go("/")}>Open dashboard</Button>} />
   }
   return (
@@ -150,41 +154,15 @@ function Review({ ctx, intent, account, wallet }: { ctx: AppCtx; intent: IntentD
 
 function Done({ ctx, intent, done }: { ctx: AppCtx; intent: IntentDto; done: { tx: Hex; claimKey?: Hex } }) {
   const explorer = explorerFor(ctx.cfg.network)
-  const key = done.claimKey?.slice(2)
-  const link = key
-    ? ctx.cfg.miniappShortName
-      ? `https://t.me/${ctx.cfg.botUsername}/${ctx.cfg.miniappShortName}?startapp=claim_${key}`
-      : `https://t.me/${ctx.cfg.botUsername}?start=claim_${key}`
-    : null
-  const [copied, setCopied] = useState(false)
   const txLink = (
     <a className="tx-link" href={`${explorer}/tx/${done.tx}`} target="_blank" rel="noreferrer">View transaction <IconExternal size={14} /></a>
   )
-  if (link) {
+  const key = done.claimKey ?? (intent.type === "create_claim" ? claimKeyFor(intent.id) : null)
+  if (key) {
     return (
       <>
-        <div className="share-card">
-          <span className="orb orb-gold" aria-hidden />
-          <div className="share-top"><KeelMark size={30} /><MezoBadge label="Mezo" /></div>
-          <span className="label">You're sending</span>
-          <strong className="huge">{fmtMusd(big(intent.params.amount), 2)}</strong>
-          <p className="muted small">{intent.params.forName ? `For ${intent.params.forName} · ` : ""}Claim in one tap, no wallet needed. Refunds after 72h if unclaimed.</p>
-          <p className="mono tiny">{link}</p>
-        </div>
-        <Glass>
-          <Notice tone="info">Anyone with this link can claim, so share it privately.</Notice>
-          <Button
-            onClick={() => {
-              const share = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent("I sent you MUSD. Tap to claim:")}`
-              if (tg?.openTelegramLink) tg.openTelegramLink(share)
-              else void navigator.clipboard.writeText(link).then(() => setCopied(true))
-            }}
-          >
-            {tg ? "Share in Telegram" : copied ? "Copied" : "Copy link"}
-          </Button>
-          <Button variant="quiet" onClick={() => void navigator.clipboard?.writeText(link).then(() => setCopied(true))}>{copied ? "Copied" : "Copy link"}</Button>
-          {txLink}
-        </Glass>
+        <ShareClaim cfg={ctx.cfg} keyHex={key} amount={big(intent.params.amount)} forName={intent.params.forName} />
+        <div className="center">{txLink}</div>
       </>
     )
   }

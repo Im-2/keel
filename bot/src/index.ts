@@ -21,6 +21,7 @@ import { LiveBus } from "./live"
 import { createCompletion } from "./completion"
 import { History } from "./history"
 import { BlockWatcher } from "./watcher"
+import { Splits } from "./splits"
 
 const config = loadConfig()
 // Hosts with an ephemeral disk (Render free) keep the database in Turso: the local file is a fast cache that is
@@ -29,19 +30,22 @@ const mirror = process.env.TURSO_DATABASE_URL ? libsqlMirror(process.env.TURSO_D
 const store = await Store.open(config.dbPath, mirror)
 const chain = new LiveChain(config.deployment, config.rpcUrl)
 const history = new History({ config, store, chain })
-const bot = createBot({ config, store, chain, history })
-const notifier = new TelegramNotifier(bot.api)
+const live = new LiveBus()
+// splits and the bot need each other (the bot posts split cards; splits message people through the bot)
+let notifier: TelegramNotifier
+const splits = new Splits({ config, store, notifier: { send: (...a) => notifier.send(...a) }, live })
+const bot = createBot({ config, store, chain, history, splits })
+notifier = new TelegramNotifier(bot.api)
 
 const relayer = config.relayerKey ? new LiveClaimRelayer(chain, config) : undefined
 if (!relayer) console.warn("No RELAYER_PRIVATE_KEY / KEEPER_PRIVATE_KEY: claim links cannot be relayed.")
 
 const premium = new Premium(store)
-const live = new LiveBus()
 const editMessage = (chatId: number, messageId: number, html: string, replyMarkup?: unknown) =>
   bot.api.editMessageText(chatId, messageId, html, { parse_mode: "HTML", reply_markup: replyMarkup as never })
-const completion = createCompletion({ config, store, chain, notifier, live, editMessage })
-const watcher = new BlockWatcher({ config, store, chain, notifier, live, completion })
-const app = createApi({ config, store, chain, notifier, relayer, premium, live, completion, history, editMessage })
+const completion = createCompletion({ config, store, chain, notifier, live, splits, editMessage })
+const watcher = new BlockWatcher({ config, store, chain, notifier, live, completion, splits })
+const app = createApi({ config, store, chain, notifier, relayer, premium, live, completion, history, splits, editMessage })
 
 // Premium users are checked every tick; everyone else every 4th tick.
 const alerts = new AlertEngine({ config, store, chain, notifier, isPremium: premium.isPremium }, config.premium ? 4 : 1)
@@ -98,7 +102,7 @@ await bot.api.setMyCommands([
   { command: "send", description: "Send MUSD, e.g. /send @friend 25" },
   { command: "claimlink", description: "Send MUSD to someone without a wallet" },
   { command: "request", description: "Request a payment in a chat" },
-  { command: "split", description: "Split a bill, e.g. /split 90 @a @b" },
+  { command: "split", description: "Split a bill: /split 90 @ada @bob dinner" },
   { command: "premium", description: "Faster alerts, pay per use in MUSD" },
   { command: "alerts", description: "Liquidation & redemption alerts" },
   { command: "link", description: "Connect or switch wallet" },

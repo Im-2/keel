@@ -225,7 +225,7 @@ describe("chat: unknown, typos, settings, groups", () => {
     expect(h.calls.length).toBe(before)
     await h.say("@KeelTestBot split 90 with @bob and @carol for dinner", { id: 42, username: "ada", first_name: "Ada" }, group)
     const echo = h.last()!.payload
-    expect(text(echo)).toContain("Split <b>90 MUSD</b> 3 ways")
+    expect(text(echo)).toContain("with <b>@bob</b>, <b>@carol</b> and you (3 ways)")
     await h.tap(cb(echo, "nl:ok:")!, { id: 42, username: "ada", first_name: "Ada" }, group)
     expect(text(h.last()!.payload)).toContain("⏳ @bob")
   })

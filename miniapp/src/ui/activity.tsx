@@ -1,4 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react"
+import { claimKeyForLink } from "../lib/claimkeys"
+import { go, startIntent } from "../lib/data"
 import type { ActivityItem } from "../lib/api"
 import { big, fmtBtc, fmtIcr, fmtMusd, timeAgo } from "../lib/units"
 import { IconBorrow, IconCheck, IconCoin, IconDrop, IconGift, IconMinus, IconPlus, IconSend, IconShield } from "./icons"
@@ -28,7 +30,11 @@ export function describe(i: ActivityItem): Described {
     case "send": return { icon: <IconSend />, title: `Sent${who(i, " to")}`, sub: i.memo || "Payment", amount: `−${musd()}`, sign: "out" }
     case "received": return { icon: <IconCoin />, title: `Received${who(i, " from")}`, sub: i.memo || "Payment", amount: `+${musd()}`, sign: "in" }
     case "pay_request": return { icon: <IconCoin />, title: "Paid a request", sub: i.memo || "Group payment", amount: `−${musd()}`, sign: "out" }
-    case "create_claim": return { icon: <IconGift />, title: "Claim link", sub: i.counterparty ? `For ${i.counterparty}` : "Escrowed in KeelPay", amount: `−${musd()}`, sign: "out" }
+    case "create_claim": {
+      const st = p.linkStatus === "claimed" ? `Claimed by ${p.claimedBy ?? "someone"}` : p.linkStatus === "cancelled" ? "Cancelled, refunded" : p.linkStatus === "open" ? "Not claimed yet" : "Escrowed in KeelPay"
+      return { icon: <IconGift />, title: `Claim link${i.counterparty ? ` for ${i.counterparty}` : ""}`, sub: st, amount: `−${musd()}`, sign: "out" }
+    }
+    case "pay_split": return { icon: <IconCoin />, title: `Paid ${i.counterparty ?? "a split"}`, sub: i.memo ? `${i.memo} · split` : "Your share", amount: `−${musd()}`, sign: "out" }
     case "claim_claimed": return { icon: <IconGift />, title: "Your link was claimed", sub: i.counterparty ? `By ${i.counterparty}` : "Claimed", amount: musd(), sign: "neutral" }
     case "claim_received": return { icon: <IconGift />, title: "Claimed a link", sub: "Gift received", amount: `+${musd()}`, sign: "in" }
     case "claim_refunded": return { icon: <IconGift />, title: "Claim link refunded", sub: "Back in your wallet", amount: `+${musd()}`, sign: "in" }
@@ -56,11 +62,24 @@ export function ActivityRow({ item, explorer, index = 0, fresh = false }: { item
       </span>
     </>
   )
-  return item.tx ? (
+  const row = item.tx ? (
     <a className={cls} href={`${explorer}/tx/${item.tx}`} target="_blank" rel="noreferrer" style={{ animationDelay: `${index * 40}ms` }}>{body}</a>
   ) : (
     <div className={cls} style={{ animationDelay: `${index * 40}ms` }}>{body}</div>
   )
+  // an unclaimed link: share it again (if this phone made it) or take the money back
+  if (item.type === "create_claim" && item.params.linkStatus === "open" && item.status === "confirmed") {
+    return (
+      <>
+        {row}
+        <div className="act-actions">
+          {claimKeyForLink(item.params.link) && <button className="link-btn" onClick={() => go(`/i/${item.id}`)}>Share again</button>}
+          <button className="link-btn danger" onClick={() => void startIntent({ type: "cancel_claim", link: item.params.link })}>Cancel & refund</button>
+        </div>
+      </>
+    )
+  }
+  return row
 }
 
 // rows already on screen (any screen), so a refetch only highlights what's actually new or changed state

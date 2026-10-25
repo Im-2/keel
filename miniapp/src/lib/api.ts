@@ -97,7 +97,15 @@ export const api = {
   intent: (id: string) => call<IntentDto>("GET", `/api/intent/${id}`),
   complete: (id: string, b: { status: "submitted" | "done" | "failed"; txHash?: string }) =>
     call<{ ok: boolean; status: "pending" | "done" | "failed"; reason?: string; txHash?: string }>("POST", `/api/intent/${id}/complete`, b),
-  claimInfo: (link: Address) => call<{ sender: Address; amount: string; expiry: number; settled: boolean }>("GET", `/api/claim/${link}`),
+  claimInfo: (link: Address) => call<ClaimInfo>("GET", `/api/claim/${link}`),
+  splits: () => call<{ created: SplitDto[]; owed: SplitDto[]; contacts: string[] }>("GET", "/api/splits"),
+  createSplit: (b: { total: string; title: string; people: Array<{ raw: string; amount?: string; bps?: number }>; includeMe: boolean; dueAt?: number | null }) =>
+    call<{ id: string; notReached: string[] }>("POST", "/api/splits", b),
+  split: (id: string) => call<SplitDto>("GET", `/api/split/${id}`),
+  payShare: (id: string, idx: number | null) => call<IntentDto>("POST", `/api/split/${id}/pay`, idx === null ? {} : { idx }),
+  remindSplit: (id: string) => call<{ reminded: string[]; queued: string[]; links: Array<{ label: string; link: string }>; skipped: string[] }>("POST", `/api/split/${id}/remind`, {}),
+  cancelSplit: (id: string) => call<{ ok: boolean }>("POST", `/api/split/${id}/cancel`, {}),
+  payRequest: (id: string) => call<IntentDto>("POST", `/api/request/${id}/pay`, {}),
   position: () => call<PositionDto>("GET", "/api/position"),
   market: () => call<{ source: string; prices: Array<[number, number]>; oracle: number }>("GET", "/api/market"),
   activity: (limit = 30, offset = 0) => call<{ items: ActivityItem[]; more: boolean }>("GET", `/api/activity?limit=${limit}&offset=${offset}`),
@@ -120,6 +128,33 @@ export interface PositionDto {
   guardian?: { enabled: boolean; minIcr: string; targetIcr: string; tipBps: number; cooldown: number; reserveBTC: string; reserveMUSD: string; canProtect: boolean } | null
   redemption?: { ahead: string; rank: number; total: number } | null
   system?: { price: string; tcr: string; recoveryMode: boolean; minNetDebt: string; borrowingRate: string; interestRateBps: number }
+}
+
+export interface ClaimInfo {
+  sender: Address
+  senderName: string | null
+  amount: string
+  expiry: number
+  settled: boolean
+  status: "open" | "claimed" | "cancelled" | "expired"
+  claimedBy: string | null
+}
+
+/** A bill split as one viewer sees it (bot/src/splits.ts `view`). Amounts are 18-decimal integer strings. */
+export interface SplitDto {
+  id: string
+  title: string
+  total: string
+  mine: string
+  includeMe: boolean
+  status: "collecting" | "open" | "settled" | "cancelled"
+  dueAt: number | null
+  createdAt: number
+  creator: { name: string; isMe: boolean }
+  shares: Array<{ idx: number; label: string; amount: string; status: "pending" | "paid"; tx: string | null; paidAt: number | null; isMe: boolean; link?: string }>
+  collected: string
+  remaining: string
+  myShare: number | null
 }
 
 /** One history row; the bot's /history uses the same feed (bot/src/history.ts). */
