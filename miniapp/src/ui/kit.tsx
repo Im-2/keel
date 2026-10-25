@@ -188,3 +188,13 @@ export function AmountInput({ value, onChange, unit, placeholder = "0" }: { valu
     </label>
   )
 }
+
+/** Official wallet logo, unmodified, in a rounded tile; a neutral lettered tile only if the image fails to load. */
+export function WalletIcon({ wallet, size = 40 }: { wallet?: { name: string; icon: string } | null; size?: number }) {
+  const [broken, setBroken] = useState(false)
+  const style = { width: size, height: size, borderRadius: Math.round(size * 0.28) }
+  if (!wallet || broken) {
+    return <span className="wallet-ico fallback" style={{ ...style, fontSize: size * 0.42 }} aria-hidden>{wallet?.name[0] ?? "?"}</span>
+  }
+  return <img className="wallet-ico" style={style} src={wallet.icon} alt="" width={size} height={size} loading="eager" decoding="async" onError={() => setBroken(true)} />
+}

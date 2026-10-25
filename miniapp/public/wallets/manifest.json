@@ -1,0 +1,50 @@
+{
+  "metamask": {
+    "name": "MetaMask",
+    "file": "metamask.png",
+    "source": "WalletConnect Explorer listing c57ca95b47569778a828d19178114f4db188b89b763c899ba0be274e97267d96 (image eebe4a7f-7166-402f-92e0-1f64ca2aa800)",
+    "homepage": "https://metamask.io/"
+  },
+  "trust": {
+    "name": "Trust Wallet",
+    "file": "trust.png",
+    "source": "WalletConnect Explorer listing 4622a2b2d6af1c9844944291e5e7351a6aa24cd7b23099efac1b2fd875da31a0 (image 7677b54f-3486-46e2-4e37-bf8747814f00)",
+    "homepage": "https://trustwallet.com/"
+  },
+  "rainbow": {
+    "name": "Rainbow",
+    "file": "rainbow.png",
+    "source": "WalletConnect Explorer listing 1ae92b26df02f0abca6304df07debccd18262fdf5fe82daa81593582dac9a369 (image 7a33d7f1-3d12-4b5c-f3ee-5cd83cb1b500)",
+    "homepage": "https://rainbow.me/"
+  },
+  "phantom": {
+    "name": "Phantom",
+    "file": "phantom.png",
+    "source": "WalletConnect Explorer listing a797aa35c0fadbfc1a53e7f675162ed5226968b44a19ee3d24385c64d1d3c393 (image b6ec7b81-bb4f-427d-e290-7631e6e50d00)",
+    "homepage": "https://phantom.app/"
+  },
+  "okx": {
+    "name": "OKX Wallet",
+    "file": "okx.png",
+    "source": "WalletConnect Explorer listing 971e689d0a5be527bac79629b4ee9b925e82208e5168b733496a09c0faed0709 (image 45f2f08e-fc0c-4d62-3e63-404e72170500)",
+    "homepage": "https://www.okx.com/web3"
+  },
+  "zerion": {
+    "name": "Zerion",
+    "file": "zerion.png",
+    "source": "WalletConnect Explorer listing ecc4036f814562b41a5268adc86270fba1365471402006302e70169465b7ac18 (image 73f6f52f-7862-49e7-bb85-ba93ab72cc00)",
+    "homepage": "https://zerion.io/"
+  },
+  "uniswap": {
+    "name": "Uniswap Wallet",
+    "file": "uniswap.png",
+    "source": "WalletConnect Explorer listing c03dfee351b6fcc421b4494ea33b9d4b92a984f87aa76d1663bb28705e95034a (image bff9cf1f-df19-42ce-f62a-87f04df13c00)",
+    "homepage": "https://uniswap.org"
+  },
+  "coinbase": {
+    "name": "Base (formerly Coinbase Wallet)",
+    "file": "coinbase.jpg",
+    "source": "WalletConnect Explorer listing fd20dc426fb37566d803205b19bbc1d4096b248ac04548e3cfb6b3a38bd033aa (image 04c88bf0-f115-4686-8c29-90a3d018a400)",
+    "homepage": "https://base.app"
+  }
+}

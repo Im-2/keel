@@ -7,7 +7,8 @@ import { usePosition } from "../lib/data"
 import { clearWalletSession } from "../lib/session"
 import { short } from "../lib/units"
 import { Header } from "../ui/shell"
-import { Button, Glass, MezoBadge, Notice, Rows, Skeleton, StateView } from "../ui/kit"
+import { Button, Glass, MezoBadge, Notice, Rows, Skeleton, StateView, WalletIcon } from "../ui/kit"
+import { useWalletApp } from "../lib/wallet-app"
 import { IconCheck, IconWallet } from "../ui/icons"
 import { haptic, shortError } from "../components"
 import type { AppCtx } from "../App"
@@ -24,6 +25,7 @@ export function Profile({ ctx }: { ctx: AppCtx }) {
   const [copied, setCopied] = useState(false)
   const u = tg?.initDataUnsafe.user
   const linked = pos.data?.address ?? null
+  const walletApp = useWalletApp()
 
   // every connector, not just the active one: a stale WalletConnect pairing would reconnect silently otherwise
   const disconnectAll = async () => {
@@ -66,7 +68,13 @@ export function Profile({ ctx }: { ctx: AppCtx }) {
           <Skeleton h={20} w="60%" />
         ) : linked ? (
           <div className="addr-row">
-            <code title={linked}>{short(linked)}</code>
+            <span className="addr-who">
+              <WalletIcon wallet={walletApp ?? null} size={40} />
+              <span>
+                <code title={linked}>{short(linked)}</code>
+                {walletApp && <span className="muted tiny">{walletApp.name}</span>}
+              </span>
+            </span>
             <button className="copy-btn" onClick={() => void navigator.clipboard?.writeText(linked).then(() => setCopied(true))}>{copied ? <><IconCheck size={12} /> Copied</> : "Copy"}</button>
           </div>
         ) : (
@@ -75,7 +83,7 @@ export function Profile({ ctx }: { ctx: AppCtx }) {
         <Rows rows={[
           ["Network", ctx.cfg.network === "mainnet" ? "Mezo" : `Mezo ${ctx.cfg.network} (chain ${ctx.cfg.chainId})`],
           ["Telegram", u?.username ? `@${u.username}` : u?.first_name ?? "—"],
-          ...(sessionAddress ? ([["Wallet app session", `${short(sessionAddress)}${connector?.name ? ` · ${connector.name}` : ""}`]] as Array<[string, string]>) : []),
+          ...(sessionAddress ? ([["Wallet app session", `${short(sessionAddress)}${walletApp?.name ?? connector?.name ? ` · ${walletApp?.name ?? connector?.name}` : ""}`]] as Array<[string, string]>) : []),
         ]} />
       </Glass>
 

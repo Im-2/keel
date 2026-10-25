@@ -10,7 +10,7 @@ import { AmountInput, Button, Glass, KeelMark, MezoBadge, Notice, Rows, Skeleton
 import { Header } from "../ui/shell"
 import { IconCheck, IconExternal } from "../ui/icons"
 import { explorerFor } from "../ui/activity"
-import { WalletGate, closeApp, haptic, shortError } from "../components"
+import { SigningWith, WalletGate, closeApp, haptic, shortError } from "../components"
 import type { AppCtx } from "../App"
 
 const NEEDS_AMOUNT = new Set(["repay", "add_collateral", "fund_reserve"])
@@ -116,6 +116,7 @@ function Review({ ctx, intent, account, wallet }: { ctx: AppCtx; intent: IntentD
           <Button busy={stepIdx >= 0} disabled={plan.blocked} onClick={run}>
             {stepIdx >= 0 ? `Confirm in your wallet (${stepIdx + 1}/${plan.steps.length})` : plan.steps.length > 1 ? `Sign ${plan.steps.length} steps` : "Sign"}
           </Button>
+          {stepIdx >= 0 && <SigningWith />}
           <p className="muted small center-text">You sign in your own wallet. Keel never has access to your funds.</p>
         </Glass>
       )}

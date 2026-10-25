@@ -6,7 +6,8 @@ import { numberToHex, type WalletClient } from "viem"
 import { chainFor } from "@keel/shared"
 import { tg } from "./lib/api"
 import { inTelegram, nudgeWallet } from "./lib/telegram"
-import { Button, Glass, KeelMark, MezoBadge, Notice, Skeleton } from "./ui/kit"
+import { Button, Glass, KeelMark, MezoBadge, Notice, Skeleton, WalletIcon } from "./ui/kit"
+import { useWalletApp } from "./lib/wallet-app"
 import { TelegramConnect, type HandoffTarget } from "./ui/TelegramConnect"
 import type { AppCtx } from "./App"
 
@@ -97,4 +98,15 @@ export function shortError(e: unknown): string {
   const m = (e as { shortMessage?: string; message?: string })?.shortMessage ?? (e as Error)?.message ?? "Something went wrong"
   if (/user rejected|denied|rejected the request/i.test(m)) return "You cancelled the request in your wallet."
   return m.split("\n")[0].slice(0, 200)
+}
+
+/** "Waiting for MetaMask…" with the wallet's own logo, shown while a signature is pending in the wallet app. */
+export function SigningWith() {
+  const w = useWalletApp()
+  return (
+    <div className="signing-with" role="status">
+      <WalletIcon wallet={w} size={28} />
+      <span className="muted small">Waiting for {w?.name ?? "your wallet"}…</span>
+    </div>
+  )
 }

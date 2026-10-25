@@ -5,7 +5,7 @@ import { go } from "../lib/data"
 import { handoffToken, inTelegram } from "../lib/telegram"
 import { short } from "../lib/units"
 import { Button, Glass, KeelMark, MezoBadge, Notice, StateView } from "../ui/kit"
-import { WalletGate, haptic, shortError } from "../components"
+import { SigningWith, WalletGate, haptic, shortError } from "../components"
 import type { AppCtx } from "../App"
 
 export function Link({ ctx }: { ctx: AppCtx }) {
@@ -55,6 +55,7 @@ export function Link({ ctx }: { ctx: AppCtx }) {
             >
               {state === "signing" ? "Waiting for signature…" : "Sign & link"}
             </Button>
+            {state === "signing" && <SigningWith />}
             <div className="center"><MezoBadge /></div>
           </Glass>
         )}

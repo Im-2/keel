@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from "react"
 import { useConnect, useAccount, useDisconnect } from "wagmi"
 import qrcode from "qrcode-generator"
 import { api } from "../lib/api"
-import { WALLETS, chosenWallet, openExternal, rememberWallet, type WalletApp } from "../lib/telegram"
-import { Button, Glass, KeelMark, MezoBadge, Notice } from "./kit"
+import { ALL_WALLETS, WALLETS, chosenWallet, openExternal, rememberWallet, type WalletApp } from "../lib/telegram"
+import { Button, Glass, KeelMark, MezoBadge, Notice, WalletIcon } from "./kit"
 import { IconExternal, IconLink, IconWallet } from "./icons"
 import { shortError } from "../components"
 
@@ -74,7 +74,7 @@ export function TelegramConnect({ title, handoff, showMark = true }: { title: st
   }, [])
 
   function openWallet(w: WalletApp) {
-    if (!uri) return
+    if (!uri || !w.wc) return
     rememberWallet(w.id)
     setPicked(w)
     setPhase("waiting")
@@ -104,8 +104,8 @@ export function TelegramConnect({ title, handoff, showMark = true }: { title: st
   if (phase === "waiting" || phase === "stalled") {
     return (
       <Glass orb="gold" className="connect">
-        <div className="wait-ring"><span /><KeelMark size={40} /></div>
-        <h2>Waiting for {picked?.name ?? "your wallet"}</h2>
+        <div className="wait-ring"><span />{picked ? <WalletIcon wallet={picked} size={48} /> : <KeelMark size={40} />}</div>
+        <h2>Waiting for {picked?.name ?? "your wallet"}…</h2>
         <p className="muted small center-text">Approve the connection in {picked?.name ?? "your wallet"}, then come back to Telegram. This screen continues on its own.</p>
         {phase === "stalled" && <Notice tone="info">Didn't connect? Open the wallet again, or start over with a fresh link.</Notice>}
         {picked && uri && <Button onClick={() => openWallet(picked)}>Open {picked.name} again</Button>}
@@ -123,7 +123,7 @@ export function TelegramConnect({ title, handoff, showMark = true }: { title: st
       <div className="wallets">
         {WALLETS.map((w) => (
           <button key={w.id} className="wallet-btn" disabled={!uri} onClick={() => openWallet(w)}>
-            <span className="wallet-dot">{w.name[0]}</span>
+            <WalletIcon wallet={w} />
             <span>{w.name}</span>
             {!uri ? <span className="spinner small-spin" aria-hidden /> : <IconExternal size={16} />}
           </button>
@@ -140,8 +140,12 @@ export function TelegramConnect({ title, handoff, showMark = true }: { title: st
         <details className="more">
           <summary>Still not working? Open in your wallet's browser</summary>
           <p className="muted small">Opens this step inside the wallet app's own browser with a one-time link (valid 10 minutes, only for this step).</p>
-          {WALLETS.filter((w) => w.dapp).map((w) => (
-            <Button key={w.id} variant="quiet" busy={handoffBusy} onClick={() => walletBrowser(w)}>Open in {w.name} browser</Button>
+          {ALL_WALLETS.filter((w) => w.dapp).map((w) => (
+            <button key={w.id} className="browser-btn" disabled={handoffBusy} onClick={() => walletBrowser(w)}>
+              <WalletIcon wallet={w} size={32} />
+              <span className="grow">Open in {w.name} browser</span>
+              {handoffBusy ? <span className="spinner small-spin" aria-hidden /> : <IconExternal size={16} />}
+            </button>
           ))}
         </details>
       )}
