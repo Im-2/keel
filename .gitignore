@@ -44,3 +44,16 @@ ui/keel-logos-red-black-white.zip
 # demo video production: keep only the script in git (videos, audio, frames and ElevenLabs output stay local)
 demvid/*
 !demvid/script.md
+
+# internal working files (agent config, build prompt, local notes)
+.claude/
+KEEL_CLAUDE_CODE_PROMPT.md
+*.local.md
+NOTES*.md
+# ui/: only ui/brand (README logo) and ui/mezo-logo.jpg are tracked; reference video, frames, zips stay local
+ui/*
+!ui/brand/
+!ui/mezo-logo.jpg
+*.mp4
+*.mov
+*.zip
