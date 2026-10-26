@@ -40,3 +40,7 @@ ui/keel-logos-red-black-white.zip
 .audit/
 .tunnel-url
 .watchdog.log
+
+# demo video production: keep only the script in git (videos, audio, frames and ElevenLabs output stay local)
+demvid/*
+!demvid/script.md
