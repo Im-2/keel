@@ -31,7 +31,9 @@
         var h = location.hash, q = location.search, tg = /tgWebApp/.test(h + q) || "TelegramWebviewProxy" in window
         try { tg = tg || /tgWebAppData/.test(sessionStorage.getItem("__telegram__initParams") || "") } catch (e) {}
         var landing = !tg && location.pathname === "/" && (h === "" || h === "#" || h === "#/about") && !/[?&](w|demo|mock)=/.test(q)
-        document.documentElement.setAttribute("data-mode", landing ? "landing" : "app")
+        var docs = /^\/docs(\/|$)/.test(location.pathname)
+        if (docs) landing = false
+        document.documentElement.setAttribute("data-mode", docs ? "docs" : landing ? "landing" : "app")
         var css = "__LANDING_CSS__", js = "__LANDING_JS__"
         if (landing && css.indexOf("__") !== 0) {
           document.write('<link rel="preload" as="font" type="font/woff2" crossorigin href="/fonts/onest-latin.woff2" />')
@@ -39,13 +41,13 @@
           // fetch the landing's code alongside the entry instead of after it
           js.split(",").forEach(function (f) { document.write('<link rel="modulepreload" crossorigin href="' + f + '" />') })
         }
-        if (!landing) {
+        if (!landing && !docs) {
           var inter = "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
           document.write('<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin /><link rel="stylesheet" href="' + inter + '" media="print" onload="this.media=\x27all\x27" />')
         }
       })()
     </script>
-    <style>html,body{background:#ffffff;margin:0}body{font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}html[data-mode=app] #root>.lp{display:none}</style>
+    <style>html,body{background:#ffffff;margin:0}body{font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}html:not([data-mode=landing]) #root>.lp{display:none}</style>
   </head>
   <body>
     <div id="root"></div>

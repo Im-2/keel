@@ -31,7 +31,12 @@ function loadTelegramSdk(): Promise<void> {
   })
 }
 
-if (isLanding) {
+// The docs (/docs, /docs/<page>) are public pages with their own bundle, in a browser and inside Telegram alike.
+const isDocs = /^\/docs(\/|$)/.test(location.pathname)
+
+if (isDocs) {
+  void import("./docs/docsmount")
+} else if (isLanding) {
   if (hash) history.replaceState(null, "", "/")
   void import("./landing/mount")
 } else {

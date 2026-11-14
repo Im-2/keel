@@ -8,7 +8,8 @@
     "build": "node scripts/fetch-wallet-icons.mjs && vite build && node scripts/prerender-landing.mjs",
     "wallet-icons": "node scripts/fetch-wallet-icons.mjs --force",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "e2e": "playwright test"
   },
   "dependencies": {
     "@keel/shared": "workspace:*",
@@ -19,6 +20,8 @@
     "@x402/fetch": "^2.28.0",
     "gsap": "3.12.5",
     "lenis": "1.1.13",
+    "marked": "14.1.4",
+    "mermaid": "11.4.1",
     "qrcode-generator": "^2.0.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
@@ -26,6 +29,7 @@
     "wagmi": "^2.12.0"
   },
   "devDependencies": {
+    "@playwright/test": "1.49.1",
     "@types/react": "^18.3.0",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.0",

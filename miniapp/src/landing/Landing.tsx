@@ -540,22 +540,45 @@ export function Landing() {
     // Scroll motion (GSAP, Lenis) starts on the visitor's first scroll, touch, pointer move or key, or after a few
     // seconds: the hero's own entrance is CSS, so nothing here delays or blocks the first paint.
     const EVENTS = ["wheel", "scroll", "touchstart", "pointermove", "keydown"] as const
-    let started = false
+    let ready: Promise<void> | null = null
     const start = () => {
-      if (started) return
-      started = true
-      EVENTS.forEach((e) => removeEventListener(e, start))
+      if (ready) return ready
+      EVENTS.forEach((e) => removeEventListener(e, kick))
       clearTimeout(timer)
-      void import("./motion").then((m) => {
+      ready = import("./motion").then((m) => {
         if (!cancelled && root.current) cleanup = m.initMotion(root.current)
       })
+      return ready
     }
-    EVENTS.forEach((e) => addEventListener(e, start, { passive: true, once: true }))
-    const timer = setTimeout(start, 8000)
+    const kick = () => void start()
+    EVENTS.forEach((e) => addEventListener(e, kick, { passive: true, once: true }))
+    const timer = setTimeout(kick, 8000)
+    // In-page links (#product, #payments…): starting the motion pins the Guardian scene, which inserts a tall
+    // spacer above the later sections. Start it first, let the layout settle, then scroll, so the link lands on
+    // its section. (Once the motion runs, its own handler takes these clicks and this one steps aside.)
+    const onAnchor = (e: MouseEvent) => {
+      if (e.defaultPrevented || e.button !== 0) return
+      const a = (e.target as HTMLElement).closest<HTMLAnchorElement>("a[href^='#']")
+      const id = a?.getAttribute("href")
+      if (!a || !id || id === "#" || !root.current?.contains(a)) return
+      const target = id === "#top" ? null : document.querySelector<HTMLElement>(id)
+      if (id !== "#top" && !target) return
+      e.preventDefault()
+      void start().then(() =>
+        requestAnimationFrame(() => {
+          const lenis = (window as unknown as { __lenis?: { scrollTo(t: HTMLElement | number, o?: object): void } }).__lenis
+          if (lenis) lenis.scrollTo(target ?? 0, { offset: -72, duration: 1.2 })
+          else if (target) target.scrollIntoView({ behavior: "smooth" })
+          else window.scrollTo({ top: 0, behavior: "smooth" })
+        }),
+      )
+    }
+    document.addEventListener("click", onAnchor)
     return () => {
       cancelled = true
       clearTimeout(timer)
-      EVENTS.forEach((e) => removeEventListener(e, start))
+      EVENTS.forEach((e) => removeEventListener(e, kick))
+      document.removeEventListener("click", onAnchor)
       cleanup?.()
     }
   }, [])

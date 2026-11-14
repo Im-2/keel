@@ -9,5 +9,7 @@ export default defineConfig(({ mode }) => {
   plugins: [react()],
   server: { port: 5173, host: true, allowedHosts: true, proxy: { "/api": "http://localhost:8787", "/healthz": "http://localhost:8787" } },
   build: { target: "es2022", chunkSizeWarningLimit: 2000 },
+  // Playwright specs (e2e/) run with `pnpm e2e`, not vitest
+  test: { exclude: ["e2e/**", "node_modules/**", "dist/**"] },
 }
 })
