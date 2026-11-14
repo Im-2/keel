@@ -16,6 +16,7 @@ import { notifyOrQueue } from "./notify"
 import { LiveBus, RateLimiter } from "./live"
 import { History } from "./history"
 import type { Splits } from "./splits"
+import type { StatsService } from "./stats"
 import { SESSION_HEADER, WebSessions, isWebUser, mountWebAuth } from "./web-auth"
 
 export interface ApiDeps {
@@ -33,6 +34,7 @@ export interface ApiDeps {
   history?: History
   splits?: Splits
   sessions?: WebSessions
+  stats?: StatsService
 }
 
 export const bindMessage = (tgId: number, nonce: string) => `Link this wallet to Keel (Telegram account ${tgId}).\nNonce: ${nonce}`
@@ -58,6 +60,8 @@ export function createApi(d: ApiDeps) {
   // Per-user data: never stored by a browser, proxy or CDN, and never served to anyone else from a cache.
   app.use("/api/*", async (c, next) => {
     await next()
+    // public stats are the same for everyone (and cached in memory); everything else is per-user
+    if (c.req.path === "/api/stats") return
     c.res.headers.set("Cache-Control", c.req.path === "/api/live" ? "private, no-store, no-transform" : "private, no-store")
     c.res.headers.set("Vary", "Origin, x-telegram-init-data, x-keel-handoff, x-keel-session")
   })
@@ -74,6 +78,19 @@ export function createApi(d: ApiDeps) {
       deployment: { musd: config.deployment.musd, keel: config.deployment.keel, legacy: config.deployment.legacy ?? [] },
     }),
   )
+
+  // ---- public on-chain stats (the /stats page and the landing page); team and test wallets excluded unless ?all=1
+  app.get("/api/stats", async (c) => {
+    if (!d.stats) return c.json({ error: "stats not configured" }, 503)
+    try {
+      const s = await d.stats.get(c.req.query("all") === "1")
+      c.header("Cache-Control", "public, max-age=30")
+      return c.json(s)
+    } catch (e) {
+      console.warn("stats:", (e as Error).message)
+      return c.json({ error: "Couldn't read the chain right now. Try again in a minute." }, 503)
+    }
+  })
 
   // ---- claim links (no Telegram auth: the link key is the credential)
   // Public: the link address is derived from the key, which never reaches this server.

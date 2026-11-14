@@ -16,5 +16,10 @@
       "version": 1,
       "guardianImplementation": "0x07F411F2EE6AC7BA758ab234FC20Eb6F5f13445D"
     }
+  ],
+  "deployBlock": 16304903,
+  "teamWallets": [
+    "0x5C22A7612D3B67C68bA84873F16C01bc06041ADD",
+    "0xaeD0994bdAdF6260efCa1f969cBBA9B3a4fB8DbD"
   ]
 }

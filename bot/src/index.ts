@@ -22,6 +22,7 @@ import { createCompletion } from "./completion"
 import { History } from "./history"
 import { BlockWatcher } from "./watcher"
 import { Splits } from "./splits"
+import { StatsService } from "./stats"
 
 const config = loadConfig()
 // Hosts with an ephemeral disk (Render free) keep the database in Turso: the local file is a fast cache that is
@@ -45,7 +46,10 @@ const editMessage = (chatId: number, messageId: number, html: string, replyMarku
   bot.api.editMessageText(chatId, messageId, html, { parse_mode: "HTML", reply_markup: replyMarkup as never })
 const completion = createCompletion({ config, store, chain, notifier, live, splits, editMessage })
 const watcher = new BlockWatcher({ config, store, chain, notifier, live, completion, splits })
-const app = createApi({ config, store, chain, notifier, relayer, premium, live, completion, history, splits, editMessage })
+const stats = new StatsService({ chain, store, config, keeperAddress: config.keeperKey ? privateKeyToAccount(config.keeperKey).address : undefined })
+const app = createApi({ config, store, chain, notifier, relayer, premium, live, completion, history, splits, editMessage, stats })
+// the first scan reads every block since the first deployment: start it now, not on the first visitor's request
+void stats.get(false).catch((e) => console.warn("stats warm-up:", (e as Error).message))
 
 // Premium users are checked every tick; everyone else every 4th tick.
 const alerts = new AlertEngine({ config, store, chain, notifier, isPremium: premium.isPremium }, config.premium ? 4 : 1)

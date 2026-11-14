@@ -41,6 +41,10 @@ export interface Deployment {
   keel: KeelAddresses | null
   /** Earlier Keel deployments that existing guardians and claim links still live on (read, never created on). */
   legacy?: KeelAddresses[]
+  /** First block with a Keel contract (where log scans start). */
+  deployBlock?: number
+  /** The Keel team's own and test wallets, excluded from public stats by default. */
+  teamWallets?: Address[]
 }
 
 const ZERO = "0x0000000000000000000000000000000000000000"
@@ -63,5 +67,6 @@ export function resolveDeployment(
   const fromFile = !overrides?.guardianFactory && !overrides?.pay
   const keel = gf && pay && gf !== ZERO && pay !== ZERO ? { ...(fromFile ? f.keel : {}), guardianFactory: gf, pay } : null
   const legacy = ((f as { legacy?: KeelAddresses[] }).legacy ?? []).filter((l) => l.guardianFactory.toLowerCase() !== gf?.toLowerCase())
-  return { network, chainId: network === "mainnet" ? 31612 : network === "testnet" ? 31611 : 31612, musd, keel, legacy }
+  const extra = f as { deployBlock?: number; teamWallets?: Address[] }
+  return { network, chainId: network === "mainnet" ? 31612 : network === "testnet" ? 31611 : 31612, musd, keel, legacy, deployBlock: extra.deployBlock, teamWallets: extra.teamWallets ?? [] }
 }

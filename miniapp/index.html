@@ -2,20 +2,37 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#ffffff" />
-    <title>Keel</title>
+    <title>Keel · Borrow against your Bitcoin, spend it in Telegram</title>
+    <meta name="description" content="Keel is a BTC-backed dollar account on Mezo: borrow MUSD without selling your Bitcoin, get protected from liquidation automatically, and send, split and claim payments, in Telegram or in your browser." />
+    <link rel="canonical" href="https://keel-miniapp.vercel.app/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Keel" />
+    <meta property="og:title" content="Keel · Borrow against your Bitcoin, spend it in Telegram" />
+    <meta property="og:description" content="MUSD loans on Mezo with automatic liquidation protection and payments anyone can receive. Non-custodial. Live on Mezo testnet." />
+    <meta property="og:url" content="https://keel-miniapp.vercel.app/" />
+    <meta property="og:image" content="https://keel-miniapp.vercel.app/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Keel: Borrow against your Bitcoin. Spend it in Telegram." />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Keel · Borrow against your Bitcoin, spend it in Telegram" />
+    <meta name="twitter:description" content="MUSD loans on Mezo with automatic liquidation protection and payments anyone can receive." />
+    <meta name="twitter:image" content="https://keel-miniapp.vercel.app/og.png" />
     <link rel="icon" type="image/svg+xml" href="/keel-icon-red.svg" />
     <link rel="icon" type="image/png" sizes="512x512" href="/keel-icon-512.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <style>html,body{background:#ffffff}</style>
+    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" media="print" onload="this.media='all'" />
+    <!-- The Telegram SDK is loaded by src/main.tsx only when the app (not the landing page) is opened. -->
+    <style>html,body{background:#ffffff;margin:0}body{font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}</style>
   </head>
   <body>
     <div id="root"></div>
+    <noscript>Keel needs JavaScript. Open <a href="https://t.me/KeelMezoBot/app">Keel in Telegram</a>.</noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

@@ -13,6 +13,7 @@ import { LiveBus } from "../src/live"
 import { Splits } from "../src/splits"
 import { LiveClaimRelayer } from "../src/relayer"
 import type { Notifier } from "../src/notify"
+import { StatsService } from "../src/stats"
 
 const config = loadConfig({ ...process.env, BOT_TOKEN: "0:web-dev-no-telegram", MINIAPP_URL: "http://localhost:5173", DB_PATH: ".keel-data/web-dev.sqlite" })
 const store = await Store.open(config.dbPath)
@@ -21,5 +22,6 @@ const notifier: Notifier = { send: async (id, html) => (console.log(`[notify ${i
 const live = new LiveBus()
 const splits = new Splits({ config, store, notifier, live })
 const relayer = config.relayerKey ? new LiveClaimRelayer(chain, config) : undefined
-const app = createApi({ config, store, chain, notifier, live, splits, relayer })
+const stats = new StatsService({ chain, store, config })
+const app = createApi({ config, store, chain, notifier, live, splits, relayer, stats })
 serve({ fetch: app.fetch, port: config.apiPort }, (i) => console.log(`web-dev api on :${i.port} (${config.network}, no Telegram)`))
