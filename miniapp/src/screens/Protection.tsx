@@ -82,6 +82,21 @@ export function Protection(_: { ctx: AppCtx }) {
         </Button>
       </Glass>
 
+      {t && icr > 113 && (
+        // a trigger one point under today's ratio: the next small dip in Mezo's BTC oracle price (not a change you
+        // make) pushes the loan under it, so testers can watch the keeper react to a real market move
+        <Glass>
+          <div className="section-head"><h3>Test it with a real price move</h3></div>
+          <p className="muted small">
+            Set the trigger just under your current ratio ({icr.toFixed(1)}%). When BTC's oracle price dips about {Math.max(0.1, (1 - Math.floor(icr - 1) / icr) * 100).toFixed(1)}%, the keeper tops your loan up from the reserve to {Math.floor(icr - 1) + 10}%. Fund the reserve first.
+          </p>
+          <Button variant="ghost" onClick={() => { setEnabled(true); setTrigger(Math.floor(icr - 1)); setTarget(Math.floor(icr - 1) + 10) }}>
+            Set to test: act when my ratio drops below {Math.floor(icr - 1)}%
+          </Button>
+          <p className="muted tiny">Then tap “Save settings” above and sign. You can set it back any time.</p>
+        </Glass>
+      )}
+
       <Glass orb="amber">
         <div className="section-head"><h3>Reserve</h3><strong>{fmtBtc(reserve, 5)}</strong></div>
         <Rows rows={[
