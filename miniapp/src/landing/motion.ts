@@ -158,8 +158,22 @@ export function initMotion(root: HTMLElement): () => void {
     })
   }
 
-  // images and fonts change heights: re-measure pinned and scrubbed sections once they're in
+  // images, fonts and content-visibility (sections render as they approach) change heights: re-measure
+  // pinned and scrubbed sections whenever the page's height settles on a new value
   const refresh = () => ScrollTrigger.refresh()
+  let lastH = root.scrollHeight
+  let rt: ReturnType<typeof setTimeout> | undefined
+  const ro = new ResizeObserver(() => {
+    if (Math.abs(root.scrollHeight - lastH) < 4) return
+    lastH = root.scrollHeight
+    clearTimeout(rt)
+    rt = setTimeout(refresh, 250)
+  })
+  ro.observe(root)
+  off.push(() => {
+    ro.disconnect()
+    clearTimeout(rt)
+  })
   on(window, "load", refresh)
   void document.fonts?.ready.then(refresh)
 

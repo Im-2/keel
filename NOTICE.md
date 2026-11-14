@@ -5,6 +5,12 @@ Everything under `contracts/contracts/` except `keel/` and `contracts/test/` (te
 vendored unmodified so Keel's integration tests run against the real protocol. Keel's own contracts live in
 `contracts/contracts/keel/` and are also GPL-3.0.
 
+## Fonts
+
+`miniapp/public/fonts/onest-latin.woff2` is **Onest** (latin subset) by Dmitri Voloshin / Onest Project, licensed under
+the SIL Open Font License 1.1 (https://openfontlicense.org), as distributed by Google Fonts. It is used unmodified on
+the landing page.
+
 ## Wallet logos
 
 `miniapp/public/wallets/` holds the official icons of MetaMask, Trust Wallet, Rainbow, Base (formerly Coinbase
