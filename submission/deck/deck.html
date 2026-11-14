@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Keel · Pitch deck</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+  /* 1920x1080 slides. Black, white and Keel red. Built to PDF/PPTX by build.mjs. */
+  :root { --red: #e10600; --deep: #9e0400; --coral: #ff6b5e; --ink: #0a0a0a; --muted: #555; --off: #f6f5f4; --line: rgba(10,10,10,.1); }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: #ddd; font-family: Inter, system-ui, sans-serif; color: var(--ink); -webkit-font-smoothing: antialiased; }
+  @page { size: 1920px 1080px; margin: 0; }
+  .slide { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: #fff; padding: 110px 130px; page-break-after: always; break-after: page; display: flex; flex-direction: column; }
+  .slide.solo:not(.show) { display: none; }
+  h1, h2, h3 { margin: 0; letter-spacing: -0.04em; line-height: 1.02; }
+  h1 { font-size: 132px; font-weight: 800; }
+  h2 { font-size: 84px; font-weight: 800; margin-bottom: 40px; }
+  h3 { font-size: 36px; font-weight: 750; letter-spacing: -0.025em; }
+  p { margin: 0; }
+  .k { font-size: 22px; font-weight: 750; letter-spacing: .1em; text-transform: uppercase; color: #c40500; display: flex; gap: 12px; align-items: center; margin-bottom: 26px; }
+  .k::before { content: ""; width: 12px; height: 12px; border-radius: 50%; background: var(--red); box-shadow: 0 0 0 6px rgba(225,6,0,.12); }
+  .lead { font-size: 36px; line-height: 1.45; color: var(--muted); max-width: 1300px; }
+  .red { color: var(--red); }
+  .muted { color: var(--muted); }
+  .num { position: absolute; right: 70px; bottom: 50px; font-size: 20px; color: #999; font-weight: 600; }
+  .logo { position: absolute; left: 130px; bottom: 46px; display: flex; gap: 12px; align-items: center; font-weight: 800; font-size: 26px; }
+  .sph { position: absolute; border-radius: 50%; background: radial-gradient(circle at 31% 26%, rgba(255,255,255,.95) 0 3.5%, rgba(255,255,255,.4) 8%, rgba(255,255,255,0) 20%), radial-gradient(circle at 72% 82%, rgba(255,140,128,.7), rgba(255,140,128,0) 42%), radial-gradient(circle at 38% 34%, #ff4d40 0%, var(--red) 40%, var(--deep) 78%, #5a0200 100%); box-shadow: inset -24px -34px 64px rgba(70,0,0,.42), inset 16px 18px 44px rgba(255,200,190,.38), 0 60px 110px -40px rgba(225,6,0,.45); }
+  .sph.soft { filter: blur(14px); opacity: .5; }
+  .grid { display: grid; gap: 28px; }
+  .g2 { grid-template-columns: 1fr 1fr; } .g3 { grid-template-columns: repeat(3, 1fr); } .g4 { grid-template-columns: repeat(4, 1fr); }
+  .card { padding: 40px; border-radius: 36px; background: var(--off); }
+  .card p { font-size: 25px; line-height: 1.45; color: var(--muted); margin-top: 14px; }
+  .card .n { font-size: 22px; font-weight: 750; color: #c40500; }
+  .dark { background: var(--ink); color: #fff; }
+  .dark p { color: rgba(255,255,255,.78); }
+  .redbg { background: var(--red); color: #fff; }
+  .redbg p, .redbg .lead { color: #fff; }
+  .phone { width: 250px; aspect-ratio: 540/1107; border-radius: 40px; padding: 9px; background: #0a0a0a; box-shadow: 0 50px 80px -40px rgba(0,0,0,.5); }
+  .phone img { width: 100%; height: 100%; object-fit: cover; object-position: top; border-radius: 32px; display: block; }
+  .phones { display: flex; gap: 34px; align-items: flex-end; }
+  .cap { font-size: 21px; font-weight: 650; text-align: center; margin-top: 18px; }
+  table { border-collapse: collapse; width: 100%; font-size: 24px; }
+  td, th { padding: 15px 18px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+  th { font-size: 18px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  code { font-family: ui-monospace, Consolas, monospace; font-size: .86em; }
+  .box { border: 2px solid var(--ink); border-radius: 22px; padding: 18px 22px; font-size: 24px; font-weight: 650; background: #fff; text-align: center; }
+  .box small { display: block; font-size: 18px; font-weight: 500; color: var(--muted); margin-top: 4px; }
+  .box.r { border-color: var(--red); background: #fff1f0; }
+  .box.b { background: var(--ink); color: #fff; }
+  .box.b small { color: #ccc; }
+  .arrow { font-size: 34px; color: var(--red); text-align: center; font-weight: 800; }
+  .big { font-size: 120px; font-weight: 800; letter-spacing: -0.05em; line-height: 1; }
+  .stat { padding: 34px; border-radius: 30px; background: var(--off); }
+  .stat span { display: block; font-size: 24px; color: var(--muted); margin-top: 10px; }
+  .pill { display: inline-block; padding: 8px 18px; border-radius: 999px; background: var(--ink); color: #fff; font-size: 20px; font-weight: 700; }
+  ul.clean { list-style: none; padding: 0; margin: 0; display: grid; gap: 18px; font-size: 27px; line-height: 1.4; }
+  ul.clean li { padding-left: 34px; position: relative; }
+  ul.clean li::before { content: ""; position: absolute; left: 0; top: 13px; width: 13px; height: 13px; border-radius: 50%; background: var(--red); }
+  .redbg ul.clean li::before { background: #fff; }
+</style>
+</head>
+<body>
+
+<!-- 1 · title -->
+<section class="slide">
+  <div class="sph" style="width:620px;height:620px;right:-120px;top:-140px"></div>
+  <div class="sph" style="width:170px;height:170px;right:300px;top:640px"></div>
+  <div class="sph soft" style="width:420px;height:420px;left:-180px;bottom:-220px"></div>
+  <div style="display:flex;align-items:center;gap:22px;margin-bottom:90px"><img src="../../ui/brand/keel-mark-red.svg" width="84" height="84" /><span style="font-size:58px;font-weight:800;letter-spacing:-.03em">Keel</span></div>
+  <h1>Borrow against<br />your Bitcoin.<br /><span class="red">Spend it in Telegram.</span></h1>
+  <p class="lead" style="margin-top:46px">A BTC-backed dollar account on Mezo: MUSD loans, automatic liquidation protection and payments anyone can receive.</p>
+  <p style="margin-top:auto;font-size:26px;font-weight:650">Mezo Buildathon · Wave 2 &nbsp;·&nbsp; keel-miniapp.vercel.app &nbsp;·&nbsp; t.me/KeelMezoBot/app</p>
+</section>
+
+<!-- 2 · problem -->
+<section class="slide">
+  <div class="k">Problem</div>
+  <h2>Bitcoin holders want dollars<br />without selling, and without babysitting a loan.</h2>
+  <div class="grid g3" style="margin-top:30px">
+    <div class="card"><div class="n">01</div><h3>Selling hurts</h3><p>Selling BTC to pay for life gives up the upside and can trigger tax. Borrowing is better, but on-chain loans live in dashboards most people never open.</p></div>
+    <div class="card"><div class="n">02</div><h3>Loans need watching</h3><p>A price drop at 3 a.m. can liquidate a loan below 110%. On MUSD, low-ratio loans are also redeemed first. Most borrowers find out too late.</p></div>
+    <div class="card"><div class="n">03</div><h3>Dollars are hard to use</h3><p>Paying a friend, splitting dinner or paying someone without a wallet is still clumsy on-chain, so borrowed dollars sit idle.</p></div>
+  </div>
+  <div class="logo"><img src="../../ui/brand/keel-mark-red.svg" width="34" height="34" />Keel</div><div class="num">2</div>
+</section>
+
+<!-- 3 · solution -->
+<section class="slide">
+  <div class="sph" style="width:240px;height:240px;right:110px;top:90px"></div>
+  <div class="k">Solution</div>
+  <h2>One account, four pillars.</h2>
+  <div class="grid g4">
+    <div class="card"><div class="n">01</div><h3>Borrow, with guardrails</h3><p>“borrow 1800 at 160%” in chat or the web app. Fee, fixed interest, ratio and liquidation price before you sign; loans Mezo would reject are blocked.</p></div>
+    <div class="card dark"><div class="n" style="color:#ff8a80">02</div><h3>Guardian protection</h3><p>Each loan lives in the owner's guardian contract. Below the trigger, a permissionless keeper tops it up from the owner's reserve. Nothing else.</p></div>
+    <div class="card"><div class="n">03</div><h3>Risk alerts</h3><p>Liquidation distance, redemption-queue rank and Recovery Mode, each with a one-tap fix ready to sign.</p></div>
+    <div class="card redbg"><div class="n" style="color:#fff">04</div><h3>Payments</h3><p>Send to any @username, split bills, and send escrowed claim links to people with no wallet. Keel pays their gas.</p></div>
+  </div>
+  <p class="lead" style="margin-top:44px;font-size:30px">Non-custodial: the server only creates intents; the user signs everything in their own wallet. In Telegram as a Mini App, or in any browser with wallet sign-in.</p>
+  <div class="logo"><img src="../../ui/brand/keel-mark-red.svg" width="34" height="34" />Keel</div><div class="num">3</div>
+</section>
+
+<!-- 4 · live demo -->
+<section class="slide" style="background:var(--off)">
+  <div class="k">Live on Mezo testnet</div>
+  <h2 style="margin-bottom:46px">The real app, real transactions.</h2>
+  <div class="phones" style="justify-content:space-between">
+    <div><div class="phone"><img src="../../docs/images/borrow-review.jpg" /></div><div class="cap">Borrow: review &amp; sign</div></div>
+    <div><div class="phone"><img src="../../docs/images/dashboard.jpg" /></div><div class="cap">Dashboard at 180%</div></div>
+    <div><div class="phone"><img src="../../docs/images/guardian-topup.jpg" /></div><div class="cap">Keeper: 160% → 179.9%</div></div>
+    <div><div class="phone"><img src="../../docs/images/chat-send.jpg" /></div><div class="cap">Send @username in chat</div></div>
+    <div><div class="phone"><img src="../../docs/images/claim-link.jpg" /></div><div class="cap">Claim link</div></div>
+    <div><div class="phone"><img src="../../docs/images/claim-success.jpg" /></div><div class="cap">Claimed, Keel paid gas</div></div>
+  </div>
+  <div class="num">4</div>
+</section>
+
+<!-- 5 · architecture -->
+<section class="slide">
+  <div class="k">Architecture</div>
+  <h2>Intents in, signatures out.</h2>
+  <div style="display:grid;grid-template-columns:1fr 70px 1fr 70px 1.1fr;gap:18px;align-items:center;margin-top:10px">
+    <div class="grid" style="gap:18px"><div class="box">Telegram chat<small>grammY bot, rule-based NLU</small></div><div class="box">Browser<small>landing + wallet sign-in</small></div></div>
+    <div class="arrow">→</div>
+    <div class="grid" style="gap:18px"><div class="box b">Keel API<small>Hono · initData HMAC or wallet session · intents</small></div><div class="box">Mini App / web app<small>React + wagmi: review &amp; sign in OWN wallet</small></div></div>
+    <div class="arrow">→</div>
+    <div class="grid" style="gap:18px"><div class="box r">KeelGuardian v2 (per user)<small>openTrove · addColl · repayMUSD · adjustTrove</small></div><div class="box r">KeelPay · KeelPro<small>claim-link escrow · MUSD subscriptions</small></div><div class="box">Mezo MUSD<small>BorrowerOperations · TroveManager · PriceFeed</small></div></div>
+  </div>
+  <div class="grid g4" style="margin-top:46px;gap:18px">
+    <div class="box">Keeper<small>calls protect() on every factory</small></div>
+    <div class="box">Claim relayer<small>pays gas only; signature binds recipient</small></div>
+    <div class="box">Block watcher<small>3 confirmations · confirmed-only success</small></div>
+    <div class="box">Alerts + live updates<small>Telegram messages · SSE</small></div>
+  </div>
+  <div class="logo"><img src="../../ui/brand/keel-mark-red.svg" width="34" height="34" />Keel</div><div class="num">5</div>
+</section>
+
+<!-- 6 · Mezo integration -->
+<section class="slide">
+  <div class="k">How Keel uses Mezo and MUSD</div>
+  <h2 style="margin-bottom:30px">Built directly on the protocol.</h2>
+  <table>
+    <tr><th style="width:28%">Mezo contract</th><th style="width:42%">Functions Keel uses</th><th>For</th></tr>
+    <tr><td><b>BorrowerOperations</b></td><td><code>openTrove · addColl · withdrawColl · withdrawMUSD · repayMUSD · adjustTrove · closeTrove · refinance · minNetDebt</code></td><td>Loans opened and protected by the user's guardian; native BTC as collateral</td></tr>
+    <tr><td><b>TroveManager</b></td><td><code>getCurrentICR · getEntireDebtAndColl · getTroveStatus · checkRecoveryMode · getTCR</code></td><td>Ratio, liquidation price, Recovery Mode, guardian planning</td></tr>
+    <tr><td><b>HintHelpers · SortedTroves</b></td><td><code>getApproxHint · computeNominalCR · findInsertPosition</code></td><td>Hints for every trove change, computed on-chain by the guardian</td></tr>
+    <tr><td><b>PriceFeed · InterestRateManager</b></td><td><code>fetchPrice · interestRate</code></td><td>Quotes, alerts, price at each protection block</td></tr>
+    <tr><td><b>MUSD (ERC-20, Permit)</b></td><td><code>transfer · approve · permit</code> + Permit2</td><td>Payments, splits, claim-link escrow, x402 premium, KeelPro</td></tr>
+  </table>
+  <p class="muted" style="font-size:24px;margin-top:26px">Rules built into every quote: 110% MCR, 150% CCR (Recovery Mode), 1,800 MUSD minimum net debt, 200 MUSD gas compensation, 0.1% fee. All 7 Keel contracts verified on explorer.test.mezo.org.</p>
+  <div class="num">6</div>
+</section>
+
+<!-- 7 · guardian -->
+<section class="slide">
+  <div class="sph soft" style="width:380px;height:380px;right:-120px;top:-120px"></div>
+  <div class="k">Guardian protection</div>
+  <h2>Protection that acts, not just alerts.</h2>
+  <div style="display:grid;grid-template-columns:1.1fr .9fr;gap:60px;align-items:center">
+    <svg viewBox="0 0 900 420" style="width:100%">
+      <line x1="60" y1="20" x2="60" y2="380" stroke="#ccc" stroke-width="2" />
+      <line x1="60" y1="380" x2="880" y2="380" stroke="#ccc" stroke-width="2" />
+      <line x1="60" y1="190" x2="880" y2="190" stroke="#e10600" stroke-width="3" stroke-dasharray="10 10" />
+      <text x="70" y="180" font-size="22" fill="#c40500" font-weight="700">Trigger 170%</text>
+      <line x1="60" y1="330" x2="880" y2="330" stroke="#0a0a0a" stroke-width="2" stroke-dasharray="4 8" />
+      <text x="70" y="320" font-size="22" fill="#0a0a0a" font-weight="700">Liquidation 110%</text>
+      <polyline points="60,110 220,120 360,160 470,205" fill="none" stroke="#0a0a0a" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" />
+      <polyline points="470,205 520,128 880,132" fill="none" stroke="#e10600" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" />
+      <circle cx="470" cy="205" r="15" fill="#e10600" />
+      <text x="420" y="250" font-size="22" font-weight="700">keeper: protect()</text>
+      <text x="560" y="110" font-size="22" font-weight="700" fill="#c40500">reserve BTC → loan: back to 180%</text>
+      <text x="80" y="95" font-size="22" font-weight="600" fill="#555">BTC falls</text>
+    </svg>
+    <ul class="clean">
+      <li><b>Owner</b> funds a reserve and picks a trigger and target.</li>
+      <li><b>Anyone</b> may call <code>protect()</code> below the trigger; it can only move reserve into the owner's own loan. Tip ≤ 1%, cooldown, owner-only withdrawals.</li>
+      <li><b>v2 partial rescue:</b> too small a reserve still helps as far as Mezo allows, and reports exactly how much BTC to add. Below 110% in Normal Mode, Mezo rejects any top-up that doesn't clear 110%: v2 returns “insufficient” with the shortfall instead of reverting.</li>
+      <li><b>Proven on testnet:</b> {{PROT_TOTAL}} protections, {{PROT_PRICE}} triggered by real BTC price moves.</li>
+    </ul>
+  </div>
+  <div class="num">7</div>
+</section>
+
+<!-- 8 · payments -->
+<section class="slide" style="background:var(--off)">
+  <div class="k">Payments</div>
+  <h2>Pay anyone. Even without a wallet.</h2>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:70px;align-items:center">
+    <div class="grid" style="gap:24px">
+      <div class="card" style="background:#fff"><h3>Send to @username</h3><p>From chat or the app. Shown as sent only once confirmed on Mezo; the recipient gets a Telegram notice.</p></div>
+      <div class="card" style="background:#fff"><h3>Split bills</h3><p>Equal, custom or percentage shares on a live card in a group. Each payment is matched on-chain.</p></div>
+      <div class="card redbg"><h3>Claim links</h3><p>MUSD escrowed in KeelPay; share a link; the recipient claims in one step and Keel pays the gas. Refunds after 72h if unclaimed.</p></div>
+    </div>
+    <div class="phones" style="justify-content:center">
+      <div class="phone"><img src="../../docs/images/chat-send.jpg" /></div>
+      <div class="phone" style="transform:translateY(-40px)"><img src="../../docs/images/received.jpg" /></div>
+    </div>
+  </div>
+  <div class="num">8</div>
+</section>
+
+<!-- 9 · traction -->
+<section class="slide">
+  <div class="k">Traction (read from the chain, {{STATS_DATE}})</div>
+  <h2>Working end to end on Mezo testnet.</h2>
+  <div class="grid g4">
+    <div class="stat"><div class="big">{{GUARDIANS}}</div><span>guardian accounts</span></div>
+    <div class="stat"><div class="big">{{MUSD}}</div><span>MUSD borrowed through Keel</span></div>
+    <div class="stat"><div class="big red">{{PROT_TOTAL}}</div><span>protections executed by the keeper</span></div>
+    <div class="stat"><div class="big">7</div><span>contracts, all verified on the explorer</span></div>
+  </div>
+  <div class="grid g2" style="margin-top:34px">
+    <ul class="clean">
+      <li>{{TESTS}} automated tests (contracts against the real MUSD stack, bot, Mini App)</li>
+      <li>Testnet end-to-end runs: payments 17/17, claim links + splits 29/29, x402 premium settled</li>
+      <li>Live 24/7: Telegram bot, Mini App, web app, public /stats</li>
+    </ul>
+    <div class="card dark"><h3>Honest status</h3><p>Every guardian so far belongs to the team ({{EXT_GUARDIANS}} from outside wallets). Wave 2 goal: real third-party testers running guardians, with protections triggered by price moves. The web app, demo mode and “set to test” trigger exist for exactly that.</p></div>
+  </div>
+  <div class="num">9</div>
+</section>
+
+<!-- 10 · business -->
+<section class="slide">
+  <div class="k">Business model</div>
+  <h2 style="margin-bottom:30px">Five revenue streams, one on-chain today.</h2>
+  <table>
+    <tr><th style="width:30%">Stream</th><th>How</th><th style="width:20%">Status</th></tr>
+    <tr><td><b>1 · Protocol share of keeper tips</b></td><td>Up to 50% of the tip (tip ≤ 1% of what's applied) to the treasury, hard-capped in the contract; owner pays no more</td><td><span class="pill">Live, 20%</span></td></tr>
+    <tr><td><b>2 · Keel Pro</b></td><td>5 MUSD / 30 days or 0.25%/yr of protected debt: fast alerts, priority keepers, auto-rebalancing</td><td><span class="pill">Contract live</span></td></tr>
+    <tr><td><b>3 · Merchant checkout</b></td><td>0.3–0.5% per payment link; P2P sends and claim links stay free</td><td>Planned</td></tr>
+    <tr><td><b>4 · Team &amp; DAO plans</b></td><td>Shared expenses, recurring splits: 20–50 MUSD / workspace / month</td><td>Planned</td></tr>
+    <tr><td><b>5 · Guardian API / white label</b></td><td>Protection for other Mezo wallets: revenue share or 500–2,000 MUSD / month</td><td>Planned</td></tr>
+  </table>
+  <p class="muted" style="font-size:24px;margin-top:24px">Unit economics (assumptions in docs/BUSINESS.md): ≈ $10 per active borrower per year at 15% Pro adoption → ≈ $100k/yr at 10k borrowers, before API licensing.</p>
+  <div class="num">10</div>
+</section>
+
+<!-- 11 · roadmap -->
+<section class="slide" style="background:var(--off)">
+  <div class="k">Roadmap</div>
+  <h2>From testnet to mainnet.</h2>
+  <div class="grid g4">
+    <div class="card" style="background:#fff"><div class="n">Now · Wave 2</div><h3>Real testers</h3><p>Web app without Telegram, demo mode, guardian v2, verified contracts, public stats.</p></div>
+    <div class="card" style="background:#fff"><div class="n">Next</div><h3>Keel Pro</h3><p>Priority keepers, auto-rebalancing strategies, multi-channel alerts, withdraw-collateral and Stability Pool screens.</p></div>
+    <div class="card dark"><div class="n" style="color:#ff8a80">Then</div><h3>Audit → mainnet</h3><p>Third-party audit of the guardian and KeelPay, then launch on Mezo mainnet.</p></div>
+    <div class="card redbg"><div class="n" style="color:#fff">Scale</div><h3>Open keeper network</h3><p>Guardian API for other Mezo wallets, merchant checkout, team plans.</p></div>
+  </div>
+  <div class="num">11</div>
+</section>
+
+<!-- 12 · team / links -->
+<section class="slide redbg">
+  <div class="sph" style="width:520px;height:520px;right:-100px;bottom:-160px;filter:brightness(1.2)"></div>
+  <div class="k" style="color:#fff">Team &amp; links</div>
+  <h2>Try Keel on Mezo testnet.</h2>
+  <div style="display:grid;grid-template-columns:1fr auto;gap:80px;align-items:center">
+    <ul class="clean" style="font-size:31px">
+      <li style="--x:0"><b>Built by @Nuelcrypt</b> (GitHub: Im-2), for the Mezo Buildathon</li>
+      <li>Web: keel-miniapp.vercel.app</li>
+      <li>Telegram: t.me/KeelMezoBot/app</li>
+      <li>Code (GPL-3.0): github.com/Im-2/keel</li>
+      <li>Live stats: keel-miniapp.vercel.app/stats</li>
+    </ul>
+    <div style="background:#fff;padding:26px;border-radius:30px;text-align:center;color:#0a0a0a"><img src="../../miniapp/public/lp/qr-telegram.svg" width="300" height="300" /><div style="font-size:22px;font-weight:700;margin-top:10px">Open in Telegram</div></div>
+  </div>
+  <div class="logo" style="color:#fff"><img src="../../ui/brand/keel-mark-white.svg" width="34" height="34" />Keel · Built on Mezo</div>
+</section>
+
+</body>
+</html>

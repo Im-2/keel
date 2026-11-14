@@ -1,5 +1,7 @@
 # Keel: submission assets
 
+> **Wave 2:** the current submission text, links and contract addresses are in [`submission/SUBMISSION.md`](../submission/SUBMISSION.md). This file keeps the Wave 1 text.
+
 ## AKINDO form text
 
 **Project name:** Keel

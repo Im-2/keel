@@ -12,16 +12,18 @@
 <p align="center">
   <a href="https://mezo.org"><img alt="Mezo Buildathon" src="https://img.shields.io/badge/Mezo-Buildathon-E10600?style=flat-square" /></a>
   <a href="https://explorer.test.mezo.org"><img alt="Live on Mezo testnet" src="https://img.shields.io/badge/live%20on-Mezo%20testnet%20(31611)-111111?style=flat-square" /></a>
-  <img alt="Tests: 285 passing" src="https://img.shields.io/badge/tests-285%20passing-2ea44f?style=flat-square" />
+  <img alt="Tests: 320 passing" src="https://img.shields.io/badge/tests-320%20passing-2ea44f?style=flat-square" />
   <a href="LICENSE"><img alt="License: GPL-3.0" src="https://img.shields.io/badge/license-GPL--3.0-blue?style=flat-square" /></a>
 </p>
 
 <p align="center">
-  <a href="https://t.me/KeelMezoBot"><b>Bot</b></a> ·
-  <a href="https://t.me/KeelMezoBot/app"><b>Mini App</b></a> ·
-  <b>Demo video</b> (link coming soon) ·
-  <b>Deck</b> (link coming soon) ·
-  <a href="docs/STATUS.md">Testnet evidence</a>
+  <a href="https://keel-miniapp.vercel.app"><b>Web app (no Telegram needed)</b></a> ·
+  <a href="https://t.me/KeelMezoBot/app"><b>Telegram Mini App</b></a> ·
+  <a href="docs/keel-deck.pdf"><b>Pitch deck (PDF)</b></a> ·
+  <a href="https://keel-miniapp.vercel.app/stats"><b>Live stats</b></a> ·
+  <a href="docs/BUSINESS.md">Business model</a> ·
+  <a href="docs/STATUS.md">Testnet evidence</a> ·
+  <b>Demo video</b> (link coming soon)
 </p>
 
 <p align="center">
@@ -54,6 +56,8 @@ Keel puts that whole account in the app people already use every day. You chat w
 - You fund a small BTC (or MUSD) reserve and pick a trigger, for example "below 170%, bring me back to 180%".
 - When the ratio drops below the trigger, **anyone** can call `protect()`. Keel runs a keeper that does this.
 - A keeper can only move your reserve into your own loan, with a cooldown and a tip capped at 1%. It can't withdraw, borrow or redirect anything.
+- **Guardian v2 never fails just because the reserve is small.** Mezo rejects any top-up or repayment that leaves a loan under 110% in Normal Mode (in Recovery Mode it allows them at any ratio). So v2 applies the best BTC top-up plus MUSD repayment the reserve allows, in one adjustment, and reports a full or partial rescue. When Mezo would reject anything it can afford, v2 moves nothing, pays no tip, and emits `InsufficientReserve` with the exact BTC to add. The bot tells the user "add X BTC" with a one-tap button.
+- Want to see it react to the market? The Protection screen has **"Set to test"**: a trigger one point under your current ratio, so a small real dip in Mezo's oracle price sets the keeper off.
 
 ### 3. Risk alerts
 
@@ -135,12 +139,17 @@ flowchart LR
   - fixed interest.
 - **MUSD as money.** MUSD is the unit for loans, payments, splits, claim-link escrow and x402. x402 uses the token's ERC20Permit (EIP-2612) and Permit2.
 
-**Deployed contracts on Mezo testnet (chain 31611):**
+**Deployed contracts on Mezo testnet (chain 31611).** Every Keel contract has verified source on the explorer (`contracts/scripts/verify-blockscout.py`, standard-JSON input, solc 0.8.24, optimizer 100 runs, EVM london).
 
 | Contract | Address |
 |---|---|
-| KeelGuardianFactory | [`0x44AA5CBb78eA506Fd91FA7942d9326De29bF2E49`](https://explorer.test.mezo.org/address/0x44AA5CBb78eA506Fd91FA7942d9326De29bF2E49) |
-| KeelPay | [`0xa0C53049202A655f5Ca5fE3131971C1B79cBEe29`](https://explorer.test.mezo.org/address/0xa0C53049202A655f5Ca5fE3131971C1B79cBEe29) |
+| KeelGuardianFactory **v2** (new guardians) | [`0x85579beE60dc659e014610e57935379F8A9B79E1`](https://explorer.test.mezo.org/address/0x85579beE60dc659e014610e57935379F8A9B79E1?tab=contract) ✓ verified |
+| KeelGuardian **v2** implementation | [`0xCCF76173D1F312b3b5c3e55A6dDBD8046f30E8eF`](https://explorer.test.mezo.org/address/0xCCF76173D1F312b3b5c3e55A6dDBD8046f30E8eF?tab=contract) ✓ verified |
+| KeelPay **v2** (new claim links) | [`0x3777b89a32cD85FfA0a49b062CDb80e66E66740d`](https://explorer.test.mezo.org/address/0x3777b89a32cD85FfA0a49b062CDb80e66E66740d?tab=contract) ✓ verified |
+| KeelPro (MUSD subscriptions) | [`0x59b1CEB919378C59FB5F3D735f81c353aA1D8654`](https://explorer.test.mezo.org/address/0x59b1CEB919378C59FB5F3D735f81c353aA1D8654?tab=contract) ✓ verified |
+| KeelGuardianFactory v1 (existing guardians keep working) | [`0x44AA5CBb78eA506Fd91FA7942d9326De29bF2E49`](https://explorer.test.mezo.org/address/0x44AA5CBb78eA506Fd91FA7942d9326De29bF2E49?tab=contract) ✓ verified |
+| KeelGuardian v1 implementation | [`0x07F411F2EE6AC7BA758ab234FC20Eb6F5f13445D`](https://explorer.test.mezo.org/address/0x07F411F2EE6AC7BA758ab234FC20Eb6F5f13445D?tab=contract) ✓ verified |
+| KeelPay v1 (older links stay claimable) | [`0xa0C53049202A655f5Ca5fE3131971C1B79cBEe29`](https://explorer.test.mezo.org/address/0xa0C53049202A655f5Ca5fE3131971C1B79cBEe29?tab=contract) ✓ verified |
 | MUSD (Mezo) | [`0x118917a40FAF1CD7a13dB0Ef56C86De7973Ac503`](https://explorer.test.mezo.org/address/0x118917a40FAF1CD7a13dB0Ef56C86De7973Ac503) |
 | BorrowerOperations (Mezo) | [`0xCdF7028ceAB81fA0C6971208e83fa7872994beE5`](https://explorer.test.mezo.org/address/0xCdF7028ceAB81fA0C6971208e83fa7872994beE5) |
 | TroveManager (Mezo) | [`0xE47c80e8c23f6B4A1aE41c34837a0599D5D16bb0`](https://explorer.test.mezo.org/address/0xE47c80e8c23f6B4A1aE41c34837a0599D5D16bb0) |
@@ -152,7 +161,8 @@ The source of truth is [`shared/deployments/testnet.json`](shared/deployments/te
 
 - **Keel never holds keys or funds.** The bot creates intents, and the user signs every fund-moving transaction in their own wallet. The server marks an intent done only after it has checked the confirmed receipt against the user's linked wallet.
 - **Identity.**
-  - Every API call is checked with Telegram `initData` HMAC.
+  - Inside Telegram, every API call is checked with Telegram `initData` HMAC.
+  - In a browser, the user signs a single-use server nonce. The resulting 12-hour session carries only the wallet address, and the server resolves the account from it on every request, never from a client-supplied id or address. Relinking or unlinking a wallet stays Telegram-only.
   - A wallet is linked to a Telegram account by signing a single-use nonce, which expires after 10 minutes.
   - Each user's data is isolated to their own account (audited).
 - **Guardian.**
@@ -184,6 +194,10 @@ An honest view of what is done. Each testnet row has transaction hashes in [docs
 | Live balances, activity and history (SSE) | ✅ Done, running in production |
 | x402 premium alerts paid in MUSD | ✅ Done, settlement proven on testnet |
 | Natural-language chat (rule-based) | ✅ Done, running in the live bot |
+| Web app without Telegram: landing page, wallet sign-in, every app screen, read-only demo mode | ✅ Done, live at keel-miniapp.vercel.app |
+| Guardian v2: partial rescue, `InsufficientReserve` with the BTC shortfall, capped protocol share | ✅ Deployed and verified on testnet; 17 contract tests (full, partial, impossible, Recovery Mode, dust, tips) |
+| Public stats from on-chain data (/stats) | ✅ Done: 4 keeper protections so far, 2 triggered by real BTC price moves (all on the team's own guardians) |
+| KeelPro subscription contract | ✅ Deployed and verified; Pro features in the app are next |
 | Recovery Mode alert | 🧪 Built and tested locally (can't be forced on a shared testnet) |
 | Close loan (repay everything) | 🧪 Built; covered by contract tests, not yet run on testnet |
 | Withdraw-collateral screen, savings in the Stability Pool | 🗓 Planned |
@@ -223,7 +237,7 @@ Every environment variable is listed, without values, in [`.env.example`](.env.e
 
 ## Deploy
 
-- **Contracts:** run `cd contracts && pnpm deploy:keel:testnet`. It writes `shared/deployments/testnet.json`.
+- **Contracts:** `cd contracts && pnpm deploy:keel:v2:testnet` deploys the v2 factory, KeelPay and KeelPro, and keeps the previous ones as `legacy` in `shared/deployments/testnet.json`. `python contracts/scripts/verify-blockscout.py` verifies them on the explorer.
 - **Bot and API:** Render web service (`render.yaml`), using the SQLite store mirrored to Turso, with cron-job.org calling the `/ops` tick endpoints.
 - **Mini App:** Vercel, using the root `vercel.json`, with `VITE_API_BASE` and `VITE_WC_PROJECT_ID` set in the project.
 
@@ -232,10 +246,10 @@ The full step-by-step guide is in [docs/DEPLOY.md](docs/DEPLOY.md).
 ## Tests
 
 ```bash
-pnpm --filter @keel/bot test        # 224 tests: handlers, API, alerts, keeper, payments, splits, claims, watcher, NLU
+pnpm --filter @keel/bot test        # 242 tests: handlers, API, web sign-in, alerts, keeper, payments, splits, claims, watcher, NLU
 pnpm --filter @keel/shared test     # 25 tests: risk maths and readers
 pnpm --filter @keel/miniapp test    # 12 tests
-cd contracts && pnpm test:keel      # 24 tests: Keel contracts against the real MUSD stack
+cd contracts && pnpm test:keel      # 41 tests: Keel v1 and v2 contracts against the real MUSD stack
 ```
 
 Testnet end-to-end scripts are in `bot/scripts/`. They need funded testnet keys in `.env`.

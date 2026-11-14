@@ -10,6 +10,24 @@ Audit date: 23 October 2026. Network: Mezo testnet (chain 31611). Everything bel
 
 Explorer links: `https://explorer.test.mezo.org/tx/<hash>`.
 
+## Wave 2 update (14 November 2026)
+
+| Item | Status | Evidence |
+|---|---|---|
+| Web link judges can open without Telegram | **Done, live** | https://keel-miniapp.vercel.app: a prerendered landing page; `#/app` for wallet sign-in (signed server nonce, 12-hour session holding only the wallet address); every app screen; `?demo=1` read-only demo with sample data. 15 tests for the new auth path (`bot/test/web-auth.test.ts`): replay, wrong signer, expiry, isolation, Telegram link and merge. Checked in a fresh incognito Chrome: landing at `/`, sign-in at `#/app`, Telegram launch data still goes straight to the app |
+| Guardian v2: partial rescue instead of revert | **Done, deployed, verified** | `KeelGuardianV2.protect()` returns Full / Partial / Insufficient. 17 contract tests against the real MUSD stack, including a test that MUSD itself rejects a sub-110% top-up in Normal Mode. Factory `0x85579beE…79E1`, implementation `0xCCF76173…E8eF` |
+| Existing guardians and links keep working | **Done** | v1 factory and KeelPay are listed as `legacy`; the keeper scans every factory; claim, cancel and relay find the KeelPay that holds the link |
+| "Reserve can't fully protect your loan, add X BTC" alerts | **Built, unit-tested** | `bot/src/alerts.ts` covers coverage shortfall and a stuck v2 guardian; the watcher announces partial rescues with the BTC to finish |
+| Explorer verification | **Done** | All 7 Keel contracts (v1 and v2 factory, implementation, KeelPay, plus KeelPro) show verified source on explorer.test.mezo.org (Blockscout) |
+| Protocol share of the keeper tip | **Live on-chain (20%, hard cap 50%)** | `ProtocolFeePaid` events; nothing collected yet because no v2 guardian has been protected so far |
+| KeelPro subscriptions | **Contract deployed and verified** | `0x59b1CEB9…8654`; Pro features in the app are not built yet |
+| Public stats | **Done** | `/api/stats` and https://keel-miniapp.vercel.app/stats. Everything is read on-chain: 4 keeper protections, 2 of them triggered by real BTC price moves. Both price-triggered ones were partial, because the reserves were nearly empty, which is the case v2 now handles. All guardians so far are the team's own: **0 third-party users yet** |
+| "Set to test" trigger helper | **Done** | Protection screen: a trigger one point under the current ratio, so a real oracle dip triggers the keeper |
+| Pitch deck | **Done** | `submission/keel-deck.pdf`, `submission/keel-deck.pptx`, `docs/keel-deck.pdf` |
+| Business model | **Done** | `docs/BUSINESS.md` |
+
+Not yet proven: a v2 protection on testnet (no v2 guardian exists yet), and any third-party user.
+
 ## 1. Test suites and typechecks (run now)
 
 | Suite | Result |
