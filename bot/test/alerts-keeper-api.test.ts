@@ -102,7 +102,7 @@ describe("api", () => {
     const s = setup()
     const claims: Array<[Address, Address]> = []
     const relayer: ClaimRelayer = {
-      link: async () => ({ sender: ADA, amount: 10n * E18, expiry: 9999999999, settled: false }),
+      link: async () => ({ sender: ADA, amount: 10n * E18, expiry: 9999999999, settled: false, pay: "0x00000000000000000000000000000000000000f1" }),
       claim: async (l, to) => (claims.push([l, to]), "0x" + "ab".repeat(32) as Hex),
     }
     const app = createApi({ config, store: s.store, chain: s.chain, notifier: s.notifier, relayer })
@@ -329,5 +329,55 @@ describe("alerts: one-tap protection buttons", () => {
     const rm = notifier.sent.find((m) => m.text.includes("Recovery Mode is ON"))!
     expect(rm.text).toContain("inside the danger zone")
     expect(rm.opts!.buttons!.flat()[0].text).toContain("Add")
+  })
+})
+
+describe("alerts: reserve can't fully protect the loan", () => {
+  it("coverage: near the trigger with too small a reserve, says how much BTC to add (once, re-arms when covered)", async () => {
+    const { store, chain, notifier, engine } = setup()
+    // 1 BTC collateral, trigger 130% -> target 150%: a rescue from the trigger needs 1 * 20/130 = 0.1538 BTC (+0.2% tip)
+    const g = guardian({ reserveBTC: E18 / 20n })
+    chain.setView(ADA, { trove: trove(pct(152), { coll: E18 }), guardian: g })
+    await engine.tick()
+    const msg = notifier.sent.find((m) => m.text.includes("can't fully protect"))!
+    expect(msg).toBeTruthy()
+    const btn = msg.opts!.buttons!.flat()[0]
+    const intent = store.getIntent(btn.webApp!.split("/i/")[1]!)!
+    expect(intent.type).toBe("fund_reserve")
+    const need = (E18 * pct(20)) / pct(130)
+    const short = (need * 10_020n) / 10_000n - E18 / 20n
+    // +2% margin, rounded up to 0.00001 BTC
+    expect(BigInt(intent.params.amount as string)).toBeGreaterThanOrEqual((short * 102n) / 100n)
+    expect(BigInt(intent.params.amount as string)).toBeLessThan((short * 102n) / 100n + 10n ** 13n)
+    await engine.tick()
+    expect(notifier.sent.filter((m) => m.text.includes("can't fully protect"))).toHaveLength(1)
+    // topped up: clears, and a later shortfall alerts again
+    chain.setView(ADA, { trove: trove(pct(152), { coll: E18 }), guardian: guardian({ reserveBTC: E18 / 5n }) })
+    await engine.tick()
+    chain.setView(ADA, { trove: trove(pct(152), { coll: E18 }), guardian: g })
+    await engine.tick()
+    expect(notifier.sent.filter((m) => m.text.includes("can't fully protect"))).toHaveLength(2)
+  })
+
+  it("stays quiet while the loan is far from the trigger or the reserve covers a full rescue", async () => {
+    const { chain, notifier, engine } = setup()
+    chain.setView(ADA, { trove: trove(pct(220), { coll: E18 }), guardian: guardian({ reserveBTC: E18 / 20n }) })
+    await engine.tick()
+    chain.setView(ADA, { trove: trove(pct(152), { coll: E18 }), guardian: guardian({ reserveBTC: E18 / 5n }) })
+    await engine.tick()
+    expect(notifier.sent.filter((m) => m.text.includes("reserve"))).toHaveLength(0)
+  })
+
+  it("guardian v2 stuck under 110%: says the guardian can't act and how much BTC makes a rescue possible", async () => {
+    const { store, chain, notifier, engine } = setup()
+    const rescue = { result: "insufficient" as const, eligible: true, btcShortfallToMCR: 4n * 10n ** 16n, btcShortfallToTarget: 3n * 10n ** 17n, recoveryMode: false }
+    chain.setView(ADA, { trove: trove(pct(105), { coll: E18 }), guardian: guardian({ version: 2, reserveBTC: 10n ** 15n, rescue }) })
+    await engine.tick()
+    const msg = notifier.sent.find((m) => m.text.includes("can't act yet"))!
+    expect(msg.text).toContain("110%")
+    const intent = store.getIntent(msg.opts!.buttons!.flat()[0].webApp!.split("/i/")[1]!)!
+    expect(BigInt(intent.params.amount as string)).toBe(4_080_000n * 10n ** 10n) // 0.04 BTC + 2% = 0.0408
+    await engine.tick()
+    expect(notifier.sent.filter((m) => m.text.includes("can't act yet"))).toHaveLength(1)
   })
 })

@@ -143,7 +143,7 @@ export class BlockWatcher {
     if (!store.claimNotice(receivedKey(t.tx, t.to))) return live.publish(u.tg_id, { reason: "balance", tx: t.tx })
 
     const amount = fmtMusd(t.value, 2)
-    const fromPay = config.deployment.keel?.pay && from === config.deployment.keel.pay.toLowerCase()
+    const fromPay = [config.deployment.keel?.pay, ...(config.deployment.legacy ?? []).map((l) => l.pay)].some((p) => p && from === p.toLowerCase())
     let text: string
     let toast: string
     if (fromPay && pays.some((p) => p.kind === "cancelled")) {
@@ -216,10 +216,20 @@ export class BlockWatcher {
     store.setKv("stat:protections", String(Number(store.getKv("stat:protections") ?? "0") + 1))
     const did = [e.btcAdded > 0n ? `added ${fmtBtc(e.btcAdded, 5)}` : "", e.musdRepaid > 0n ? `repaid ${fmtMusd(e.musdRepaid, 2)}` : ""].filter(Boolean).join(" and ")
     if (!u.settings.muted && store.claimNotice(`prot:${e.tx.toLowerCase()}`)) {
-      await notifier.send(u.tg_id, `🛡 <b>Guardian protected your loan</b>: ${did} from your reserve.\nRatio ${fmtIcr(e.icrBefore)} → <b>${fmtIcr(e.icrAfter)}</b>.`, {
-        buttonText: "View transaction",
-        buttonUrl: explorerTx(config.network, e.tx),
-      })
+      if (e.partialShortfall !== undefined) {
+        // v2 partial rescue: say so, and offer the exact top-up (+2% for interest and price moves)
+        const step = 10n ** 13n
+        const add = (((e.partialShortfall * 102n) / 100n + step - 1n) / step) * step
+        const i = store.createIntent(u.tg_id, "fund_reserve", { amount: add.toString() })
+        await notifier.send(u.tg_id, `🛡 <b>Guardian partly protected your loan</b>: ${did} from your reserve.\nRatio ${fmtIcr(e.icrBefore)} → <b>${fmtIcr(e.icrAfter)}</b>. The reserve ran out before your target: add <b>${fmtBtc(add, 5)}</b> so it can finish the job.`, {
+          buttons: [[{ text: `🔋 Add ${fmtBtc(add, 5)} to the reserve`, webApp: `${config.miniappUrl}/#/i/${i.id}` }], [{ text: "View transaction", url: explorerTx(config.network, e.tx) }]],
+        })
+      } else {
+        await notifier.send(u.tg_id, `🛡 <b>Guardian protected your loan</b>: ${did} from your reserve.\nRatio ${fmtIcr(e.icrBefore)} → <b>${fmtIcr(e.icrAfter)}</b>.`, {
+          buttonText: "View transaction",
+          buttonUrl: explorerTx(config.network, e.tx),
+        })
+      }
     }
     live.publish(u.tg_id, { reason: "protected", tx: e.tx, toast: `Guardian ${did}: ratio ${fmtIcr(e.icrAfter)}` })
     return 1

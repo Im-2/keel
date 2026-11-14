@@ -71,7 +71,7 @@ export function createApi(d: ApiDeps) {
       rpcUrl: config.rpcUrl ?? null,
       botUsername: config.botUsername,
       miniappShortName: config.miniappShortName ?? null,
-      deployment: { musd: config.deployment.musd, keel: config.deployment.keel },
+      deployment: { musd: config.deployment.musd, keel: config.deployment.keel, legacy: config.deployment.legacy ?? [] },
     }),
   )
 
@@ -91,7 +91,7 @@ export function createApi(d: ApiDeps) {
       if (cl?.counterparty) claimedBy = nameOf(store.findByAddress(cl.counterparty), cl.counterparty)
       else if (evs.some((e) => e.kind === "link_cancelled" && e.counterparty === link.toLowerCase())) status = "cancelled"
     }
-    return c.json({ sender: info.sender, senderName: sender ? nameOf(sender) : null, amount: info.amount.toString(), expiry: info.expiry, settled: info.settled, status, claimedBy })
+    return c.json({ sender: info.sender, senderName: sender ? nameOf(sender) : null, amount: info.amount.toString(), expiry: info.expiry, settled: info.settled, status, claimedBy, pay: info.pay })
   })
 
   app.post("/api/claim/relay", async (c) => {

@@ -58,7 +58,7 @@ export function Claim({ ctx, keyHex }: { ctx: AppCtx; keyHex?: string }) {
     setErr("")
     try {
       const signature = await linkAccount!.signTypedData({
-        domain: { name: "KeelPay", version: "1", chainId: ctx.cfg.chainId, verifyingContract: ctx.deployment.keel!.pay },
+        domain: { name: "KeelPay", version: "1", chainId: ctx.cfg.chainId, verifyingContract: info?.pay ?? ctx.deployment.keel!.pay },
         types: { Claim: [{ name: "link", type: "address" }, { name: "to", type: "address" }] },
         primaryType: "Claim",
         message: { link: linkAccount!.address, to },

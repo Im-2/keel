@@ -6,6 +6,7 @@ import {
   interestRateManagerAbi,
   keelGuardianAbi,
   keelGuardianFactoryAbi,
+  keelGuardianV2Abi,
   priceFeedAbi,
   troveManagerAbi,
 } from "./generated/abis"
@@ -128,20 +129,37 @@ export interface GuardianState {
   btcToAdd: bigint
   musdToRepay: bigint
   resultingIcr: bigint
+  /** 1 or 2 (see KeelGuardianV2). */
+  version: number
+  /**
+   * V2 only: what protect() would do right now. `insufficient` means the reserve can't help at all (MUSD would
+   * reject a top-up that leaves the loan under 110%); the shortfalls say how much reserve BTC is missing.
+   */
+  rescue: { result: "full" | "partial" | "insufficient"; eligible: boolean; btcShortfallToMCR: bigint; btcShortfallToTarget: bigint; recoveryMode: boolean } | null
 }
 
-export async function findGuardian(client: Client, keel: KeelAddresses, owner: Address): Promise<Address | null> {
-  const g = await client.readContract({ address: keel.guardianFactory, abi: keelGuardianFactoryAbi, functionName: "guardianOf", args: [owner] })
-  return g === "0x0000000000000000000000000000000000000000" ? null : g
+/**
+ * The owner's guardian: the current factory first, then earlier (legacy) factories, so a loan opened on an older
+ * guardian keeps working after an upgrade. New guardians are only ever created on the current factory.
+ */
+export async function findGuardian(client: Client, keel: KeelAddresses, owner: Address, legacy: KeelAddresses[] = []): Promise<Address | null> {
+  for (const k of [keel, ...legacy]) {
+    const g = await client.readContract({ address: k.guardianFactory, abi: keelGuardianFactoryAbi, functionName: "guardianOf", args: [owner] })
+    if (g !== "0x0000000000000000000000000000000000000000") return g
+  }
+  return null
 }
 
 export async function readGuardian(client: Client, guardian: Address): Promise<GuardianState> {
-  const [cfg, pos, status, owner] = await Promise.all([
+  const [cfg, pos, status, owner, preview] = await Promise.all([
     client.readContract({ address: guardian, abi: keelGuardianAbi, functionName: "config" }),
     client.readContract({ address: guardian, abi: keelGuardianAbi, functionName: "position" }),
     client.readContract({ address: guardian, abi: keelGuardianAbi, functionName: "protectionStatus" }).catch(() => null),
     client.readContract({ address: guardian, abi: keelGuardianAbi, functionName: "owner" }),
+    // V1 has no previewProtect: the call reverts and the guardian is treated as version 1
+    client.readContract({ address: guardian, abi: keelGuardianV2Abi, functionName: "previewProtect" }).catch(() => null),
   ])
+  const RESULT = ["full", "partial", "insufficient"] as const
   const [enabled, tipBps, cooldown, minIcr, targetIcr] = cfg
   return {
     guardian,
@@ -157,5 +175,9 @@ export async function readGuardian(client: Client, guardian: Address): Promise<G
     btcToAdd: status ? status[2] : 0n,
     musdToRepay: status ? status[3] : 0n,
     resultingIcr: status ? status[4] : 0n,
+    version: preview ? 2 : 1,
+    rescue: preview
+      ? { result: RESULT[Number(preview[1].result)] ?? "insufficient", eligible: preview[0], btcShortfallToMCR: preview[1].btcShortfallToMCR, btcShortfallToTarget: preview[1].btcShortfallToTarget, recoveryMode: preview[1].recoveryMode }
+      : null,
   }
 }

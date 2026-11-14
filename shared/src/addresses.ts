@@ -21,6 +21,14 @@ export const MUSD = musdJson as unknown as Record<"testnet" | "mainnet", MusdAdd
 export interface KeelAddresses {
   guardianFactory: Address
   pay: Address
+  /** 1 = KeelGuardianFactory (reverts when the reserve can't reach the target), 2 = V2 (partial rescue). */
+  version?: number
+  guardianImplementation?: Address
+  /** KeelPro subscriptions (v2 deployments). */
+  pro?: Address
+  /** Receives the protocol share of keeper tips and KeelPro payments (v2 deployments). */
+  treasury?: Address
+  protocolShareBps?: number
 }
 
 export const PYTH_MEZO: Address = "0x2880aB155794e7179c9eE2e38200202908C17B43"
@@ -29,7 +37,10 @@ export interface Deployment {
   network: NetworkName
   chainId: number
   musd: MusdAddresses
+  /** The contracts new guardians and new claim links use. */
   keel: KeelAddresses | null
+  /** Earlier Keel deployments that existing guardians and claim links still live on (read, never created on). */
+  legacy?: KeelAddresses[]
 }
 
 const ZERO = "0x0000000000000000000000000000000000000000"
@@ -49,6 +60,8 @@ export function resolveDeployment(
   if (!musd) throw new Error(`No MUSD addresses for ${network}. Run the local seed script first.`)
   const gf = (overrides?.guardianFactory || f.keel?.guardianFactory) as Address | undefined
   const pay = (overrides?.pay || f.keel?.pay) as Address | undefined
-  const keel = gf && pay && gf !== ZERO && pay !== ZERO ? { guardianFactory: gf, pay } : null
-  return { network, chainId: network === "mainnet" ? 31612 : network === "testnet" ? 31611 : 31612, musd, keel }
+  const fromFile = !overrides?.guardianFactory && !overrides?.pay
+  const keel = gf && pay && gf !== ZERO && pay !== ZERO ? { ...(fromFile ? f.keel : {}), guardianFactory: gf, pay } : null
+  const legacy = ((f as { legacy?: KeelAddresses[] }).legacy ?? []).filter((l) => l.guardianFactory.toLowerCase() !== gf?.toLowerCase())
+  return { network, chainId: network === "mainnet" ? 31612 : network === "testnet" ? 31611 : 31612, musd, keel, legacy }
 }

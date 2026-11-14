@@ -42,7 +42,8 @@ export interface AppConfig {
   miniappShortName: string | null
   deployment: {
     musd: Record<string, Address>
-    keel: { guardianFactory: Address; pay: Address } | null
+    keel: { guardianFactory: Address; pay: Address; version?: number; pro?: Address; treasury?: Address; protocolShareBps?: number } | null
+    legacy?: Array<{ guardianFactory: Address; pay: Address; version?: number }>
   }
 }
 
@@ -150,6 +151,8 @@ export interface ClaimInfo {
   settled: boolean
   status: "open" | "claimed" | "cancelled" | "expired"
   claimedBy: string | null
+  /** KeelPay contract holding the link (older links live on the previous KeelPay). */
+  pay?: Address
 }
 
 /** A bill split as one viewer sees it (bot/src/splits.ts `view`). Amounts are 18-decimal integer strings. */

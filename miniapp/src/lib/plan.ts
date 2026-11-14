@@ -86,7 +86,7 @@ export async function buildPlan(intent: IntentDto, ctx: Ctx, input: { amount?: s
   const m = ctx.deployment.musd
   const p = intent.params
   const sys = await readSystem(ctx.pub, m)
-  const guardianAddr = await findGuardian(ctx.pub, keel, ctx.account)
+  const guardianAddr = await findGuardian(ctx.pub, keel, ctx.account, ctx.deployment.legacy)
   const trove = guardianAddr ? await readTrove(ctx.pub, m, guardianAddr, sys.price) : null
   const amountRaw = input.amount ?? p.amount
   const plan: Plan = { title: "", rows: [], warnings: [], blocked: false, steps: [] }
@@ -303,7 +303,16 @@ export async function buildPlan(intent: IntentDto, ctx: Ctx, input: { amount?: s
         ["Link", `${link.slice(0, 8)}…${link.slice(-6)}`],
         ["Fee", "none (gas in BTC only)"],
       ]
-      plan.steps.push({ label: "Cancel & refund", run: (w, c) => write(w, c, { address: keel.pay, abi: keelPayAbi, functionName: "cancel", args: [link] }) })
+      // a link made before the KeelPay upgrade is cancelled on the contract that holds it
+      let payAddr = keel.pay
+      for (const pay of [keel.pay, ...(ctx.deployment.legacy ?? []).map((l) => l.pay)]) {
+        const [sender] = await ctx.pub.readContract({ address: pay, abi: keelPayAbi, functionName: "links", args: [link] })
+        if (sender !== "0x0000000000000000000000000000000000000000") {
+          payAddr = pay
+          break
+        }
+      }
+      plan.steps.push({ label: "Cancel & refund", run: (w, c) => write(w, c, { address: payAddr, abi: keelPayAbi, functionName: "cancel", args: [link] }) })
       return plan
     }
     default:

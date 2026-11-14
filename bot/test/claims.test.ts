@@ -8,6 +8,8 @@ import { ADA, BOB, FakeChain, FakeNotifier, config } from "./helpers"
 
 const LINK = "0x00000000000000000000000000000000000000d4" as Address
 
+const PAY = "0x00000000000000000000000000000000000000f1" as const
+
 function setup(info: LinkInfo | null, claim: ClaimRelayer["claim"] = async () => ("0x" + "ab".repeat(32)) as Hex) {
   const store = new Store(":memory:")
   store.upsertUser(42, "ada", "Ada")
@@ -22,18 +24,18 @@ function setup(info: LinkInfo | null, claim: ClaimRelayer["claim"] = async () =>
 
 describe("claim links", () => {
   it("shows who sent it, how much, and that it's open", async () => {
-    const { app } = setup({ sender: ADA, amount: 20n * E18, expiry: Math.floor(Date.now() / 1000) + 3600, settled: false })
+    const { app } = setup({ sender: ADA, amount: 20n * E18, expiry: Math.floor(Date.now() / 1000) + 3600, settled: false, pay: PAY })
     const r = await (await app.request(`/api/claim/${LINK}`)).json() as any
-    expect(r).toMatchObject({ senderName: "@ada", amount: (20n * E18).toString(), status: "open", settled: false })
+    expect(r).toMatchObject({ senderName: "@ada", amount: (20n * E18).toString(), status: "open", settled: false, pay: PAY })
   })
   it("says who claimed it, or that it was cancelled, or expired", async () => {
-    const claimed = setup({ sender: ADA, amount: E18, expiry: 9_999_999_999, settled: true })
+    const claimed = setup({ sender: ADA, amount: E18, expiry: 9_999_999_999, settled: true, pay: PAY })
     claimed.store.recordEvent({ tx: "0x" + "01".repeat(32), log_index: 1, wallet: ADA, kind: "link_claimed", counterparty: BOB, amount: E18.toString(), block: 5, at: 1, data: { link: LINK } })
     expect(await (await claimed.app.request(`/api/claim/${LINK}`)).json()).toMatchObject({ status: "claimed", claimedBy: "@bob" })
-    const cancelled = setup({ sender: ADA, amount: E18, expiry: 9_999_999_999, settled: true })
+    const cancelled = setup({ sender: ADA, amount: E18, expiry: 9_999_999_999, settled: true, pay: PAY })
     cancelled.store.recordEvent({ tx: "0x" + "02".repeat(32), log_index: 1, wallet: ADA, kind: "link_cancelled", counterparty: LINK, amount: E18.toString(), block: 5, at: 1, data: { link: LINK } })
     expect(await (await cancelled.app.request(`/api/claim/${LINK}`)).json()).toMatchObject({ status: "cancelled" })
-    const expired = setup({ sender: ADA, amount: E18, expiry: 1000, settled: false })
+    const expired = setup({ sender: ADA, amount: E18, expiry: 1000, settled: false, pay: PAY })
     expect(await (await expired.app.request(`/api/claim/${LINK}`)).json()).toMatchObject({ status: "expired" })
   })
   it("an unknown link (another network, or a typo) is a clear 404", async () => {
@@ -43,14 +45,14 @@ describe("claim links", () => {
     expect(((await r.json()) as any).error).toContain("doesn't exist on this network")
   })
   it("relays the destination-bound claim and tells the sender once", async () => {
-    const { app, notifier } = setup({ sender: ADA, amount: 5n * E18, expiry: 9_999_999_999, settled: false })
+    const { app, notifier } = setup({ sender: ADA, amount: 5n * E18, expiry: 9_999_999_999, settled: false, pay: PAY })
     const body = JSON.stringify({ link: LINK, to: BOB, signature: "0x" + "11".repeat(65) })
     const r = await app.request("/api/claim/relay", { method: "POST", headers: { "content-type": "application/json" }, body })
     expect(r.status).toBe(200)
     expect(notifier.sent.filter((m) => m.to === 42 && m.text.includes("was claimed by <b>@bob</b>"))).toHaveLength(1)
   })
   it("relayer out of gas: the claimer gets a clear message and the admins are alerted once", async () => {
-    const { app, notifier } = setup({ sender: ADA, amount: E18, expiry: 9_999_999_999, settled: false }, async () => {
+    const { app, notifier } = setup({ sender: ADA, amount: E18, expiry: 9_999_999_999, settled: false, pay: PAY }, async () => {
       throw new Error("insufficient funds for gas * price + value")
     })
     const body = JSON.stringify({ link: LINK, to: BOB, signature: "0x" + "11".repeat(65) })
@@ -61,7 +63,7 @@ describe("claim links", () => {
     expect(notifier.sent.filter((m) => m.to === 1 && m.text.includes("out of gas"))).toHaveLength(1)
   })
   it("maps contract errors to plain words", async () => {
-    const { app } = setup({ sender: ADA, amount: E18, expiry: 9_999_999_999, settled: false }, async () => {
+    const { app } = setup({ sender: ADA, amount: E18, expiry: 9_999_999_999, settled: false, pay: PAY }, async () => {
       throw new Error("reverted with custom error LinkSettled()")
     })
     const r = await app.request("/api/claim/relay", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ link: LINK, to: BOB, signature: "0x" + "11".repeat(65) }) })

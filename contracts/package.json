@@ -25,6 +25,7 @@
     "set-price": "ts-node --transpile-only scripts/set-price.ts",
     "deploy:keel:testnet": "hardhat run scripts/deploy-keel.ts --network matsnet",
     "deploy:keel:mainnet": "hardhat run scripts/deploy-keel.ts --network mainnet",
+    "deploy:keel:v2:testnet": "hardhat run scripts/deploy-keel-v2.ts --network matsnet",
     "test:keel": "hardhat test test/keel/*.test.ts"
   },
   "devDependencies": {

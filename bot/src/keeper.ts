@@ -24,14 +24,17 @@ export class LiveKeeperBackend implements KeeperBackend {
     return this.wallet.account!.address
   }
 
+  /** Every guardian on every Keel factory: v2 and the legacy v1 one (existing guardians keep being protected). */
   async guardians(): Promise<Address[]> {
-    const factory = this.chain.deployment.keel!.guardianFactory
     const out: Address[] = []
-    for (let offset = 0n; ; offset += 200n) {
-      const page = await this.chain.client.readContract({ address: factory, abi: keelGuardianFactoryAbi, functionName: "guardians", args: [offset, 200n] })
-      out.push(...page)
-      if (page.length < 200) return out
+    for (const factory of this.chain.factories()) {
+      for (let offset = 0n; ; offset += 200n) {
+        const page = await this.chain.client.readContract({ address: factory, abi: keelGuardianFactoryAbi, functionName: "guardians", args: [offset, 200n] })
+        out.push(...page)
+        if (page.length < 200) break
+      }
     }
+    return out
   }
 
   async canProtect(guardian: Address): Promise<boolean> {

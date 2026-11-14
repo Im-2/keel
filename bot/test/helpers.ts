@@ -27,7 +27,7 @@ export const trove = (icr: bigint, over: Partial<TroveState> = {}): TroveState =
 })
 
 export const guardian = (over: Partial<GuardianState> = {}): GuardianState => ({
-  guardian: GUARDIAN, owner: ADA, enabled: true, tipBps: 20, cooldown: 300, minIcr: pct(130), targetIcr: pct(150), reserveBTC: E18 / 10n, reserveMUSD: 0n, canProtect: false, btcToAdd: 0n, musdToRepay: 0n, resultingIcr: 0n, ...over,
+  guardian: GUARDIAN, owner: ADA, enabled: true, tipBps: 20, cooldown: 300, minIcr: pct(130), targetIcr: pct(150), reserveBTC: E18 / 10n, reserveMUSD: 0n, canProtect: false, btcToAdd: 0n, musdToRepay: 0n, resultingIcr: 0n, version: 1, rescue: null, ...over,
 })
 
 export class FakeChain implements ChainService {

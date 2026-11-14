@@ -106,6 +106,72 @@ export class AlertEngine {
     }
   }
 
+  /**
+   * "Your reserve can't fully protect your loan, add X BTC". Two cases, each sent once until it clears:
+   *  - coverage: protection is on and the loan is getting close to the trigger, but if it fell to the trigger the
+   *    reserve couldn't bring it back to the target;
+   *  - stuck (guardian v2): the loan is under the trigger and the reserve can't do anything Mezo would accept
+   *    (in Normal Mode a top-up that leaves the loan under 110% is rejected), so the guardian can't act at all.
+   * Amounts include a 2% margin for interest and price moves, rounded up to 0.00001 BTC.
+   */
+  private async reserveAlerts(u: UserRow, v: UserView) {
+    const { store, notifier, config } = this.d
+    const t = v.trove
+    const g = v.kind === "guardian" ? v.guardian : null
+    if (!t || !g?.enabled) {
+      store.setAlert(u.tg_id, "reserve", "ok")
+      return
+    }
+    const step = 10n ** 13n
+    const withMargin = (x: bigint) => (((x * 102n) / 100n + step - 1n) / step) * step
+    const fundButton = (amount: bigint, label: string): NotifyButton[][] => {
+      const i = store.createIntent(u.tg_id, "fund_reserve", { amount: amount.toString() })
+      return [[{ text: label, webApp: `${config.miniappUrl}/#/i/${i.id}` }]]
+    }
+    const prev = store.getAlert(u.tg_id, "reserve")?.value ?? "ok"
+
+    if (g.rescue?.result === "insufficient" && t.icr < g.minIcr) {
+      const short = g.rescue.btcShortfallToMCR > 0n ? g.rescue.btcShortfallToMCR : g.rescue.btcShortfallToTarget
+      if (prev !== "stuck") {
+        store.setAlert(u.tg_id, "reserve", "stuck")
+        const add = withMargin(short)
+        if (!u.settings.muted && add > 0n) {
+          await notifier.send(
+            u.tg_id,
+            `🚨 <b>Your guardian can't act yet.</b> Your ratio is <b>${fmtIcr(t.icr)}</b>, under your ${fmtIcr(g.minIcr)} trigger, and the reserve (${fmtBtc(g.reserveBTC, 5)}) is too small for a top-up Mezo would accept` +
+              (t.icr < pct(110) && !g.rescue.recoveryMode ? ` (below 110%, Mezo only accepts a top-up that lifts the loan back over 110%).` : ".") +
+              `
+Add <b>${fmtBtc(add, 5)}</b> to the reserve and the next keeper check rescues it.`,
+            { buttons: fundButton(add, `🔋 Add ${fmtBtc(add, 5)} to the reserve`) },
+          )
+        }
+      }
+      return
+    }
+
+    // what a rescue from the trigger back to the target costs: the ratio scales with collateral at a fixed price
+    const need = (t.coll * (g.targetIcr - g.minIcr)) / g.minIcr
+    const needWithTip = (need * BigInt(10_000 + g.tipBps)) / 10_000n
+    const short = g.reserveMUSD === 0n && needWithTip > g.reserveBTC ? needWithTip - g.reserveBTC : 0n
+    const close = t.icr < g.minIcr + pct(25)
+    if (short > 0n && g.reserveBTC > 0n && close) {
+      if (prev === "ok") {
+        store.setAlert(u.tg_id, "reserve", "short")
+        const add = withMargin(short)
+        if (!u.settings.muted) {
+          await notifier.send(
+            u.tg_id,
+            `🔋 <b>Your reserve can't fully protect your loan.</b> If your ratio falls to ${fmtIcr(g.minIcr)}, bringing it back to ${fmtIcr(g.targetIcr)} takes about ${fmtBtc(needWithTip, 5)}; the reserve holds ${fmtBtc(g.reserveBTC, 5)}.
+Add <b>${fmtBtc(add, 5)}</b> so your guardian can do the whole job${g.version >= 2 ? " (until then it does as much as the reserve allows)" : ""}.`,
+            { buttons: fundButton(add, `🔋 Add ${fmtBtc(add, 5)} to the reserve`) },
+          )
+        }
+      }
+    } else if (short === 0n && prev !== "ok") {
+      store.setAlert(u.tg_id, "reserve", "ok")
+    }
+  }
+
   private async positionAlerts(u: UserRow, v: UserView) {
     const { store, notifier } = this.d
     const t = v.trove
@@ -145,6 +211,8 @@ export class AlertEngine {
         await notifier.send(u.tg_id, `🟢 You're back to a healthy <b>${fmtIcr(t.icr)}</b>.`)
       }
     }
+
+    await this.reserveAlerts(u, v)
 
     // redemption exposure: how much MUSD must be redeemed before this loan is touched
     if (v.redemption) {

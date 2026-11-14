@@ -1,7 +1,20 @@
 {
   "chainId": 31611,
   "keel": {
-    "guardianFactory": "0x44AA5CBb78eA506Fd91FA7942d9326De29bF2E49",
-    "pay": "0xa0C53049202A655f5Ca5fE3131971C1B79cBEe29"
-  }
+    "version": 2,
+    "guardianFactory": "0x85579beE60dc659e014610e57935379F8A9B79E1",
+    "guardianImplementation": "0xCCF76173D1F312b3b5c3e55A6dDBD8046f30E8eF",
+    "pay": "0x3777b89a32cD85FfA0a49b062CDb80e66E66740d",
+    "pro": "0x59b1CEB919378C59FB5F3D735f81c353aA1D8654",
+    "treasury": "0x5C22A7612D3B67C68bA84873F16C01bc06041ADD",
+    "protocolShareBps": 2000
+  },
+  "legacy": [
+    {
+      "guardianFactory": "0x44AA5CBb78eA506Fd91FA7942d9326De29bF2E49",
+      "pay": "0xa0C53049202A655f5Ca5fE3131971C1B79cBEe29",
+      "version": 1,
+      "guardianImplementation": "0x07F411F2EE6AC7BA758ab234FC20Eb6F5f13445D"
+    }
+  ]
 }

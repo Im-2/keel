@@ -43,11 +43,16 @@ export interface ChainService {
 }
 
 export interface Receipt { ok: boolean; status: "success" | "reverted"; from: Address; block: bigint }
-export interface ProtectedEvent { guardian: Address; btcAdded: bigint; musdRepaid: bigint; icrBefore: bigint; icrAfter: bigint; tx: string; block?: bigint; logIndex?: number }
+export interface ProtectedEvent {
+  guardian: Address; btcAdded: bigint; musdRepaid: bigint; icrBefore: bigint; icrAfter: bigint; tx: string; block?: bigint; logIndex?: number
+  /** Guardian v2: the reserve ran out before the target; this much more reserve BTC would have reached it. */
+  partialShortfall?: bigint
+}
 export interface TransferEvent { from: Address; to: Address; value: bigint; tx: string; block: bigint; logIndex: number }
 export interface PayEvent { kind: "created" | "claimed" | "cancelled"; link: Address; sender?: Address; to?: Address; amount: bigint; tx: string; block: bigint; logIndex: number }
 
 const protectedEvent = parseAbiItem("event Protected(address indexed keeper, uint8 action, uint256 btcAdded, uint256 musdRepaid, uint256 icrBefore, uint256 icrAfter, uint256 tipBTC, uint256 tipMUSD)")
+const partialRescueEvent = parseAbiItem("event PartialRescue(address indexed keeper, uint256 btcAdded, uint256 musdRepaid, uint256 icrBefore, uint256 icrAfter, uint256 btcShortfall)")
 const transferEvent = parseAbiItem("event Transfer(address indexed from, address indexed to, uint256 value)")
 const linkCreated = parseAbiItem("event LinkCreated(address indexed link, address indexed sender, uint256 amount, uint64 expiry)")
 const linkClaimed = parseAbiItem("event LinkClaimed(address indexed link, address indexed to, uint256 amount, address relayer)")
@@ -80,7 +85,7 @@ export class LiveChain implements ChainService {
   async view(address: Address): Promise<UserView> {
     const keel = this.deployment.keel!
     const sys = await this.system()
-    const guardianAddress = await findGuardian(this.client, keel, address)
+    const guardianAddress = await findGuardian(this.client, keel, address, this.deployment.legacy)
     const guardian = guardianAddress ? await readGuardian(this.client, guardianAddress) : null
 
     let troveOwner: Address | null = null
@@ -111,9 +116,21 @@ export class LiveChain implements ChainService {
     }
   }
 
+  /** Guardians on every Keel factory (current and legacy). */
   async guardianCount(): Promise<number> {
-    const n = await this.client.readContract({ address: this.deployment.keel!.guardianFactory, abi: keelGuardianFactoryAbi, functionName: "totalGuardians" })
-    return Number(n)
+    let n = 0
+    for (const f of this.factories()) n += Number(await this.client.readContract({ address: f, abi: keelGuardianFactoryAbi, functionName: "totalGuardians" }))
+    return n
+  }
+
+  /** Current factory first, then legacy ones. */
+  factories(): Address[] {
+    return [this.deployment.keel?.guardianFactory, ...(this.deployment.legacy ?? []).map((l) => l.guardianFactory)].filter(Boolean) as Address[]
+  }
+
+  /** Current KeelPay first, then legacy ones (old claim links stay claimable and cancellable). */
+  pays(): Address[] {
+    return [this.deployment.keel?.pay, ...(this.deployment.legacy ?? []).map((l) => l.pay)].filter(Boolean) as Address[]
   }
 
   blockNumber(): Promise<bigint> {
@@ -140,15 +157,20 @@ export class LiveChain implements ChainService {
 
   async guardianOf(address: Address): Promise<Address | null> {
     if (!this.deployment.keel) return null
-    return (await findGuardian(this.client, this.deployment.keel, address)) ?? null
+    return (await findGuardian(this.client, this.deployment.keel, address, this.deployment.legacy)) ?? null
   }
 
   async protectedEvents(guardians: Address[], from: bigint, to: bigint): Promise<ProtectedEvent[]> {
     if (guardians.length === 0 || from > to) return []
-    const logs = await this.client.getLogs({ address: guardians, event: protectedEvent, fromBlock: from, toBlock: to })
+    const [logs, partial] = await Promise.all([
+      this.client.getLogs({ address: guardians, event: protectedEvent, fromBlock: from, toBlock: to }),
+      this.client.getLogs({ address: guardians, event: partialRescueEvent, fromBlock: from, toBlock: to }),
+    ])
+    const shortfall = new Map(partial.map((l) => [`${l.transactionHash}:${l.address.toLowerCase()}`, l.args.btcShortfall!]))
     return logs.map((l) => ({
       guardian: l.address, btcAdded: l.args.btcAdded!, musdRepaid: l.args.musdRepaid!,
       icrBefore: l.args.icrBefore!, icrAfter: l.args.icrAfter!, tx: l.transactionHash, block: l.blockNumber, logIndex: l.logIndex,
+      partialShortfall: shortfall.get(`${l.transactionHash}:${l.address.toLowerCase()}`),
     }))
   }
 
@@ -168,9 +190,9 @@ export class LiveChain implements ChainService {
   }
 
   async payEvents(from: bigint, to: bigint): Promise<PayEvent[]> {
-    const pay = this.deployment.keel?.pay
-    if (!pay || from > to) return []
-    const logs = await this.client.getLogs({ address: pay, events: [linkCreated, linkClaimed, linkCancelled], fromBlock: from, toBlock: to })
+    const pays = this.pays()
+    if (!pays.length || from > to) return []
+    const logs = await this.client.getLogs({ address: pays, events: [linkCreated, linkClaimed, linkCancelled], fromBlock: from, toBlock: to })
     return logs.map((l) => {
       const base = { link: l.args.link!, amount: l.args.amount!, tx: l.transactionHash, block: l.blockNumber, logIndex: l.logIndex }
       if (l.eventName === "LinkCreated") return { ...base, kind: "created" as const, sender: l.args.sender }

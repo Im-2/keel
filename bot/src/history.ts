@@ -110,7 +110,8 @@ export class History {
 
   private fromEvent(e: ChainEventRow, sameTx: ChainEventRow[], guardian: Address | null): HistoryItem | null {
     const { store, config } = this.d
-    const pay = config.deployment.keel?.pay?.toLowerCase()
+    const pays = [config.deployment.keel?.pay, ...(config.deployment.legacy ?? []).map((l) => l.pay)].filter(Boolean).map((p) => p!.toLowerCase())
+    const isPay = (a: string | null) => !!a && pays.includes(a)
     const cp = e.counterparty
     const own = !!cp && (cp === zeroAddress || cp === guardian?.toLowerCase())
     const who = cp ? nameOf(store.findByAddress(cp), cp) : null
@@ -118,14 +119,14 @@ export class History {
     switch (e.kind) {
       case "transfer_in":
         if (own) return { ...base, type: "borrow", counterparty: null }
-        if (cp === pay) return sameTx.some((x) => x.kind === "link_cancelled") ? { ...base, type: "claim_refunded", counterparty: null } : { ...base, type: "claim_received", counterparty: null }
+        if (isPay(cp)) return sameTx.some((x) => x.kind === "link_cancelled") ? { ...base, type: "claim_refunded", counterparty: null } : { ...base, type: "claim_received", counterparty: null }
         {
           const share = store.shareByTx(e.tx)
           return { ...base, type: "received", counterparty: who, memo: share ? `${share.title} · split` : null }
         }
       case "transfer_out":
         if (own) return { ...base, type: "repay", counterparty: null }
-        if (cp === pay) return sameTx.some((x) => x.kind === "link_created") ? null : { ...base, type: "create_claim", counterparty: null }
+        if (isPay(cp)) return sameTx.some((x) => x.kind === "link_created") ? null : { ...base, type: "create_claim", counterparty: null }
         return { ...base, type: "send", counterparty: who }
       case "link_created":
         return { ...base, type: "create_claim", counterparty: null }

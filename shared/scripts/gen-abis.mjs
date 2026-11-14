@@ -11,6 +11,9 @@ const keel = {
   keelGuardianAbi: "keel/KeelGuardian.sol/KeelGuardian.json",
   keelGuardianFactoryAbi: "keel/KeelGuardianFactory.sol/KeelGuardianFactory.json",
   keelPayAbi: "keel/KeelPay.sol/KeelPay.json",
+  keelGuardianV2Abi: "keel/KeelGuardianV2.sol/KeelGuardianV2.json",
+  keelGuardianFactoryV2Abi: "keel/KeelGuardianFactoryV2.sol/KeelGuardianFactoryV2.json",
+  keelProAbi: "keel/KeelPro.sol/KeelPro.json",
 }
 
 // For MUSD contracts only keep what Keel touches (keeps the bundle small).

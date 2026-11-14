@@ -60,7 +60,7 @@ export function App({ cfg }: { cfg: AppConfig }) {
     return () => removeEventListener("hashchange", on)
   }, [])
   const deployment = useMemo(
-    () => ({ network: cfg.network, chainId: cfg.chainId, musd: cfg.deployment.musd, keel: cfg.deployment.keel }) as unknown as Deployment,
+    () => ({ network: cfg.network, chainId: cfg.chainId, musd: cfg.deployment.musd, keel: cfg.deployment.keel, legacy: cfg.deployment.legacy ?? [] }) as unknown as Deployment,
     [cfg],
   )
   const ctx: AppCtx = { cfg, deployment, pub }
