@@ -101,6 +101,9 @@ test("every visible link and button is clickable and lands where it says", async
       if (!(await el.isVisible())) continue // e.g. the open-menu button text when the menu is closed
     }
     const label = `${it.tag} "${it.text}" ${it.href}`
+    // bring it on screen the way a visitor would, and let scroll-linked motion (the footer sliding up) settle
+    await el.scrollIntoViewIfNeeded().catch(() => undefined)
+    await page.waitForTimeout(900)
     try {
       if (it.tag === "button") {
         // the only button is the mobile menu toggle: it must open the menu
@@ -133,11 +136,15 @@ test("every visible link and button is clickable and lands where it says", async
           const box = await target.boundingBox()
           ok = !!box && box.y < vh * 0.6 && box.y + box.height > 0
         }
-        if (!ok) problems.push(`anchor did not scroll to its section: ${label}`)
+        if (!ok) {
+          const where = await page.evaluate((sel) => ({ y: Math.round(scrollY), top: Math.round(document.querySelector(sel)?.getBoundingClientRect().top ?? -1), lenis: !!(window as unknown as { __lenis?: unknown }).__lenis }), it.href)
+          problems.push(`anchor did not scroll to its section (${JSON.stringify(where)}): ${label}`)
+        }
         continue
       }
       const want = new URL(it.href, baseURL)
-      await Promise.all([page.waitForURL((u) => u.pathname === want.pathname && u.search === want.search, { timeout: 30_000 }), isMobile ? el.tap() : el.click()])
+      // "commit": the navigation happened; heavy destinations (the app in demo mode) can take longer to finish loading
+      await Promise.all([page.waitForURL((u) => u.pathname === want.pathname && u.search === want.search, { timeout: 30_000, waitUntil: "commit" }), isMobile ? el.tap() : el.click()])
       // the destination rendered something real (docs page, stats, sign-in or the demo)
       await expect(page.locator("body")).not.toHaveText(/^\s*$/, { timeout: 20_000 })
     } catch (e) {
