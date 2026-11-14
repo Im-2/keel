@@ -20,7 +20,12 @@ export const LINKS = {
 export const API = ((import.meta.env.VITE_API_BASE as string | undefined) ?? "").replace(/\/$/, "")
 
 /** Addresses come from shared/deployments/testnet.json; `verified` is set once the explorer shows the source. */
-const VERIFIED = new Set<string>([])
+// verified on explorer.test.mezo.org with contracts/scripts/verify-blockscout.py
+const VERIFIED = new Set<string>([
+  "0x85579bee60dc659e014610e57935379f8a9b79e1", "0xccf76173d1f312b3b5c3e55a6ddbd8046f30e8ef", "0x3777b89a32cd85ffa0a49b062cdb80e66e66740d",
+  "0x59b1ceb919378c59fb5f3d735f81c353aa1d8654", "0x44aa5cbb78ea506fd91fa7942d9326de29bf2e49", "0xa0c53049202a655f5ca5fe3131971c1b79cbee29",
+  "0x07f411f2ee6ac7ba758ab234fc20eb6f5f13445d",
+])
 const k = testnet.keel as unknown as Record<string, string>
 const legacy = (testnet.legacy ?? []) as unknown as Array<Record<string, string>>
 export const CONTRACTS = [
