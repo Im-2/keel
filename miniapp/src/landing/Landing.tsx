@@ -521,16 +521,25 @@ export function Landing() {
   useEffect(() => {
     let cleanup: (() => void) | undefined
     let cancelled = false
-    // motion code (GSAP, Lenis) loads once the browser is idle, so it never delays or blocks the first paint
-    const start = () =>
+    // Scroll motion (GSAP, Lenis) starts on the visitor's first scroll, touch, pointer move or key, or after a few
+    // seconds: the hero's own entrance is CSS, so nothing here delays or blocks the first paint.
+    const EVENTS = ["wheel", "scroll", "touchstart", "pointermove", "keydown"] as const
+    let started = false
+    const start = () => {
+      if (started) return
+      started = true
+      EVENTS.forEach((e) => removeEventListener(e, start))
+      clearTimeout(timer)
       void import("./motion").then((m) => {
         if (!cancelled && root.current) cleanup = m.initMotion(root.current)
       })
-    const ric = (window as unknown as { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number }).requestIdleCallback
-    if (ric) ric(start, { timeout: 2500 })
-    else setTimeout(start, 600)
+    }
+    EVENTS.forEach((e) => addEventListener(e, start, { passive: true, once: true }))
+    const timer = setTimeout(start, 8000)
     return () => {
       cancelled = true
+      clearTimeout(timer)
+      EVENTS.forEach((e) => removeEventListener(e, start))
       cleanup?.()
     }
   }, [])

@@ -23,11 +23,8 @@
     <link rel="icon" type="image/svg+xml" href="/keel-icon-red.svg" />
     <link rel="icon" type="image/png" sizes="512x512" href="/keel-icon-512.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" media="print" onload="this.media='all'" />
-    <!-- The Telegram SDK is loaded by src/main.tsx only when the app (not the landing page) is opened. -->
+    <!-- The Telegram SDK is loaded by src/main.tsx only when the app (not the landing page) is opened.
+         Fonts: the landing uses self-hosted Onest (public/fonts, SIL OFL), the app uses Inter from Google Fonts. -->
     <script>
       // Same rule as src/main.tsx: a plain browser at "/" gets the (prerendered) landing page; everything else is the app.
       (function () {
@@ -37,9 +34,14 @@
         document.documentElement.setAttribute("data-mode", landing ? "landing" : "app")
         var css = "__LANDING_CSS__", js = "__LANDING_JS__"
         if (landing && css.indexOf("__") !== 0) {
+          document.write('<link rel="preload" as="font" type="font/woff2" crossorigin href="/fonts/onest-latin.woff2" />')
           document.write('<link rel="stylesheet" href="' + css + '" />')
           // fetch the landing's code alongside the entry instead of after it
           js.split(",").forEach(function (f) { document.write('<link rel="modulepreload" crossorigin href="' + f + '" />') })
+        }
+        if (!landing) {
+          var inter = "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+          document.write('<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin /><link rel="stylesheet" href="' + inter + '" media="print" onload="this.media=\x27all\x27" />')
         }
       })()
     </script>
