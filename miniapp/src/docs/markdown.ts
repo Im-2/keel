@@ -23,7 +23,8 @@ export function rewriteHref(href: string): { href: string; external: boolean } {
   const anchor = hash ? `#${hash}` : ""
   if (/^(https?:|mailto:)/.test(href)) return { href, external: true }
   if (href.startsWith("#")) return { href, external: false }
-  const file = path.replace(/^\.\.\//, "").replace(/^\.\//, "")
+  // docs/site/x.md links to "x.md"; docs/*.md (checklist, business) link to "site/x.md"
+  const file = path.replace(/^\.\.\//, "").replace(/^\.\//, "").replace(/^site\//, "")
   if (FILE_TO_SLUG[file]) return { href: `/docs/${FILE_TO_SLUG[file]}${anchor}`, external: false }
   if (path.startsWith("../images/")) return { href: `/docs-images/${path.slice("../images/".length)}`, external: false }
   if (path.startsWith("/")) return { href, external: false }
