@@ -16,6 +16,7 @@ import { notifyOrQueue } from "./notify"
 import { LiveBus, RateLimiter } from "./live"
 import { History } from "./history"
 import type { Splits } from "./splits"
+import { SESSION_HEADER, WebSessions, isWebUser, mountWebAuth } from "./web-auth"
 
 export interface ApiDeps {
   config: Config
@@ -31,6 +32,7 @@ export interface ApiDeps {
   completion?: Completion
   history?: History
   splits?: Splits
+  sessions?: WebSessions
 }
 
 export const bindMessage = (tgId: number, nonce: string) => `Link this wallet to Keel (Telegram account ${tgId}).\nNonce: ${nonce}`
@@ -43,6 +45,7 @@ export function createApi(d: ApiDeps) {
   const live = d.live ?? new LiveBus()
   const completion = d.completion ?? createCompletion({ config, store, chain, notifier, live, splits: d.splits, editMessage: d.editMessage })
   const history = d.history ?? new History({ config, store, chain })
+  const sessions = d.sessions ?? new WebSessions(store)
   const app = new Hono<{ Variables: { tg: InitData } }>()
   const miniappOrigin = (() => {
     try {
@@ -51,12 +54,12 @@ export function createApi(d: ApiDeps) {
       return "*"
     }
   })()
-  app.use("/api/*", cors({ origin: [miniappOrigin, "http://localhost:5173", "https://localhost:5173"], exposeHeaders: ["*"] }))
+  app.use("/api/*", cors({ origin: [miniappOrigin, "http://localhost:5173", "https://localhost:5173", "http://localhost:5174"], exposeHeaders: ["*"] }))
   // Per-user data: never stored by a browser, proxy or CDN, and never served to anyone else from a cache.
   app.use("/api/*", async (c, next) => {
     await next()
     c.res.headers.set("Cache-Control", c.req.path === "/api/live" ? "private, no-store, no-transform" : "private, no-store")
-    c.res.headers.set("Vary", "Origin, x-telegram-init-data, x-keel-handoff")
+    c.res.headers.set("Vary", "Origin, x-telegram-init-data, x-keel-handoff, x-keel-session")
   })
 
   app.get("/healthz", (c) => c.json({ ok: true, network: config.network }))
@@ -127,8 +130,12 @@ export function createApi(d: ApiDeps) {
     }
   })
 
+  // ---- wallet sign-in for the web app (outside Telegram)
+  mountWebAuth(app, { sessions, chainId: config.deployment.chainId, domain: (() => { try { return new URL(config.miniappUrl).host } catch { return "keel" } })() })
+
   // ---- authenticated routes
-  const auth = async (c: Context, next: () => Promise<void>) => {
+  /** Telegram initData only: for things that act on the Telegram account itself (linking, unlinking, handoffs). */
+  const tgAuth = async (c: Context, next: () => Promise<void>) => {
     try {
       c.set("tg" as never, validateInitData(c.req.header(INIT_HEADER) ?? "", config.botToken) as never)
     } catch (e) {
@@ -136,6 +143,20 @@ export function createApi(d: ApiDeps) {
     }
     await next()
   }
+  /**
+   * Telegram initData, or a wallet session from the web app. A session carries only a wallet address; the account is
+   * looked up from it here, on the server, on every request.
+   */
+  const auth = async (c: Context, next: () => Promise<void>) => {
+    const token = c.req.header(SESSION_HEADER)
+    if (!token || c.req.header(INIT_HEADER)) return tgAuth(c, next)
+    const u = sessions.resolve(token)
+    if (!u) return c.json({ error: "Your session has ended. Sign in with your wallet again.", code: "session" }, 401)
+    c.set("tg" as never, { user: { id: u.tg_id }, authDate: 0 } as never)
+    c.set("web" as never, true as never)
+    await next()
+  }
+  const isWeb = (c: Context) => c.get("web" as never) === true
   /**
    * Same as `auth`, but also accepts a one-time handoff token (for the wallet's own in-app browser, where there is
    * no Telegram initData). The token only unlocks the routes for its purpose; see `handoffAllows`.
@@ -159,8 +180,8 @@ export function createApi(d: ApiDeps) {
   const tgOf = (c: Context) => c.get("tg" as never) as InitData
   const userOf = (c: Context) => {
     const { user } = tgOf(c)
-    // a handoff carries only the Telegram id: never overwrite the stored name with blanks
-    return handoffOf(c) ? (store.getUser(user.id) ?? store.upsertUser(user.id)) : store.upsertUser(user.id, user.username, user.first_name)
+    // a handoff or a web session carries only the account id: never overwrite the stored name with blanks
+    return handoffOf(c) || isWeb(c) ? (store.getUser(user.id) ?? store.upsertUser(user.id)) : store.upsertUser(user.id, user.username, user.first_name)
   }
   if (d.premium) mountPremium(app, { config, premium: d.premium, auth: auth as never, tgIdOf: ((c: Context) => tgOf(c).user.id) as never, onGranted: (tgId, until) => void notifier.send(tgId, `⭐ <b>Keel Premium is on</b> until ${new Date(until * 1000).toISOString().slice(0, 10)}: your loan is now checked every few seconds instead of minutes.`) })
   mountAppRoutes(app, { store, chain, auth: auth as never, userOf, history, live, splits: d.splits })
@@ -205,7 +226,7 @@ export function createApi(d: ApiDeps) {
     })
     return new Response(body, { headers: { "content-type": "text/event-stream", "cache-control": "no-cache, no-transform", connection: "keep-alive", "x-accel-buffering": "no" } })
   })
-  app.use("/api/handoff", auth)
+  app.use("/api/handoff", tgAuth)
   app.use("/api/me", authOrHandoff)
   app.use("/api/nonce", authOrHandoff)
   app.use("/api/bind", authOrHandoff)
@@ -230,17 +251,28 @@ export function createApi(d: ApiDeps) {
 
   app.get("/api/me", (c) => {
     const u = userOf(c)
-    return c.json({ tgId: u.tg_id, username: u.username, address: u.address, settings: u.settings })
+    return c.json({ tgId: isWebUser(u.tg_id) ? null : u.tg_id, username: u.username, address: u.address, settings: u.settings, web: isWeb(c), telegram: !isWebUser(u.tg_id) })
+  })
+
+  // A web-only account attaches a Telegram account later: the bot's /start web_<code> moves it over.
+  app.use("/api/web/telegram", auth)
+  app.post("/api/web/telegram", (c) => {
+    const u = userOf(c)
+    if (!isWebUser(u.tg_id)) return c.json({ linked: true })
+    const code = sessions.telegramLinkCode(u)
+    return c.json({ linked: false, url: `https://t.me/${config.botUsername}?start=web_${code}`, expiresIn: 1800 })
   })
 
   app.post("/api/nonce", (c) => {
+    // linking a wallet to a Telegram account needs Telegram; a web session is already tied to its wallet
+    if (isWeb(c)) return c.json({ error: "Open Keel in Telegram to link a different wallet." }, 403)
     const u = userOf(c)
     const nonce = store.issueNonce(u.tg_id)
     return c.json({ nonce, message: bindMessage(u.tg_id, nonce) })
   })
 
   // Unlink the caller's own wallet (Telegram initData only: a one-time handoff link can't do this).
-  app.use("/api/disconnect", auth)
+  app.use("/api/disconnect", tgAuth)
   app.post("/api/disconnect", async (c) => {
     const u = userOf(c)
     const was = store.disconnect(u.tg_id)
@@ -253,6 +285,7 @@ export function createApi(d: ApiDeps) {
   })
 
   app.post("/api/bind", async (c) => {
+    if (isWeb(c)) return c.json({ error: "Open Keel in Telegram to link a different wallet." }, 403)
     const u = userOf(c)
     const body = await c.req.json().catch(() => null)
     if (!body || !isAddress(body.address) || typeof body.nonce !== "string" || typeof body.signature !== "string") return c.json({ error: "bad request" }, 400)

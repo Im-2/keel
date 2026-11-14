@@ -1,3 +1,4 @@
+import { TelegramNote } from "../web/TelegramNote"
 import { useEffect, useState } from "react"
 import { GAS_BUFFER, SUGGESTED_RESERVE, collateralToTarget, pct } from "@keel/shared"
 import { startIntent, usePosition } from "../lib/data"
@@ -94,6 +95,7 @@ export function Protection(_: { ctx: AppCtx }) {
         {fundCap === 0n && <Notice tone="danger">Your wallet needs more than {fmtBtc(GAS_BUFFER, 3)} (kept for fees) to fund the reserve.</Notice>}
         <Button variant="ghost" busy={busy === "fund"} disabled={fundAmt === 0n} onClick={() => run("fund", { type: "fund_reserve", amount: fundAmt.toString() })}>Fund reserve</Button>
       </Glass>
+      <TelegramNote />
       <footer className="foot"><MezoBadge /></footer>
     </>
   )

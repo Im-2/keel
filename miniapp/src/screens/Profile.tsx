@@ -12,8 +12,63 @@ import { useWalletApp } from "../lib/wallet-app"
 import { IconCheck, IconWallet } from "../ui/icons"
 import { haptic, shortError } from "../components"
 import type { AppCtx } from "../App"
+import { clearWebSession, isDemo, isWeb, exitDemo } from "../lib/web"
+import { TelegramNote, useMe } from "../web/TelegramNote"
 
 export function Profile({ ctx }: { ctx: AppCtx }) {
+  return isWeb() ? <WebProfile ctx={ctx} /> : <TelegramProfile ctx={ctx} />
+}
+
+/** Web mode: the session's wallet, Telegram status and sign-out (unlinking a wallet needs Telegram). */
+function WebProfile({ ctx }: { ctx: AppCtx }) {
+  const pos = usePosition()
+  const me = useMe()
+  const qc = useQueryClient()
+  const wagmiConfig = useConfig()
+  const [busy, setBusy] = useState(false)
+  const walletApp = useWalletApp()
+  const linked = pos.data?.address ?? null
+  async function signOut() {
+    setBusy(true)
+    if (isDemo()) return exitDemo()
+    await api.webLogout().catch(() => undefined)
+    await clearWalletSession(async () => {
+      await Promise.all(wagmiConfig.connectors.map((c) => wagmiDisconnect(wagmiConfig, { connector: c }).catch(() => undefined)))
+    })
+    qc.removeQueries()
+    clearWebSession()
+    location.hash = "#/about"
+  }
+  return (
+    <>
+      <Header title="Profile" greeting="Settings" back />
+      <Glass orb="gold">
+        <div className="section-head"><h3>Signed in with</h3><IconWallet size={20} /></div>
+        {linked ? (
+          <div className="addr-row">
+            <span className="addr-who">
+              <WalletIcon wallet={walletApp ?? null} size={40} />
+              <span><code title={linked}>{short(linked)}</code>{walletApp && <span className="muted tiny">{walletApp.name}</span>}</span>
+            </span>
+          </div>
+        ) : <Skeleton h={20} w="60%" />}
+        <Rows rows={[
+          ["Network", ctx.cfg.network === "mainnet" ? "Mezo" : `Mezo ${ctx.cfg.network} (chain ${ctx.cfg.chainId})`],
+          ["Telegram", me.data?.telegram ? "Connected" : "Not connected"],
+          ["Session", isDemo() ? "Demo (sample data)" : "Wallet signature, 12 hours"],
+        ]} />
+      </Glass>
+      <TelegramNote />
+      <Glass>
+        <p className="muted small">Signing out ends this browser session. Your loan and funds stay on-chain, untouched.</p>
+        <Button variant="ghost" busy={busy} onClick={signOut}>{isDemo() ? "Exit demo" : "Sign out"}</Button>
+      </Glass>
+      <footer className="foot"><MezoBadge /></footer>
+    </>
+  )
+}
+
+function TelegramProfile({ ctx }: { ctx: AppCtx }) {
   const pos = usePosition()
   const qc = useQueryClient()
   const wagmiConfig = useConfig()

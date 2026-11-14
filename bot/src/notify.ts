@@ -1,4 +1,5 @@
 import type { Api } from "grammy"
+import { isWebUser } from "./web-auth"
 
 export interface NotifyButton {
   text: string
@@ -39,6 +40,8 @@ export const unreachable = (e: unknown) => {
 export class TelegramNotifier implements Notifier {
   constructor(private api: Api) {}
   async send(tgId: number, html: string, opts?: NotifyOpts) {
+    // web-only accounts have no Telegram chat: nothing to deliver, nothing to queue
+    if (isWebUser(tgId)) return true
     try {
       await this.api.sendMessage(tgId, html, {
         parse_mode: "HTML",

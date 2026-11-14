@@ -5,6 +5,7 @@ import {
 import type { Config } from "./config"
 import type { Store, UserRow, IntentRow, IntentType } from "./db"
 import type { ChainService } from "./chain"
+import { WebSessions } from "./web-auth"
 import { balanceCard, borrowCard, esc, helpText, historyLine, positionCard, renderRequest, welcomeText } from "./format"
 import { UserError, args, parseAmount, parsePercent, parseRecipient, splitArgs, type Recipient } from "./parse"
 import { mountChat } from "./chat"
@@ -385,6 +386,13 @@ export function createBot(deps: Deps, bot = new Bot(deps.config.botToken)): Bot 
   bot.command("start", handler(async (ctx, user) => {
     const payload = args(ctx).trim()
     if (payload.startsWith("pay_")) return void (await startPay(ctx, user, payload.slice(4)))
+    if (payload.startsWith("web_")) {
+      // a wallet that signed in on the web joins this Telegram account (alerts and notices start arriving here)
+      const r = new WebSessions(store).redeemTelegramLink(payload.slice(4), user.tg_id)
+      if (!r.ok) return void (await ctx.reply(`⚠️ ${esc(r.error)}`, { parse_mode: "HTML" }))
+      return void (await ctx.reply(`🔗 <b>Telegram connected.</b> Wallet <code>${r.address.slice(0, 6)}…${r.address.slice(-4)}</code> is now linked here, with its history. Alerts, protection notices and payment notices will arrive in this chat.
+Try /position.`, { parse_mode: "HTML" }))
+    }
     const target = parseStartParam(payload)
     // Fallback for t.me/<bot>?start=… links: open the Mini App on that screen in one tap. The big menu button at the
     // bottom of this chat is pointed at the same screen too, until the next plain /start.

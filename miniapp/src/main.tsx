@@ -10,6 +10,8 @@ import { api, tg, type AppConfig } from "./lib/api"
 import { App } from "./App"
 import { inTelegram, readHandoffFromUrl } from "./lib/telegram"
 import { scopeStorageToUser } from "./lib/session"
+import { isDemo, isWeb } from "./lib/web"
+import { WebRoot } from "./web/WebRoot"
 import "./styles.css"
 
 tg?.ready()
@@ -30,7 +32,8 @@ scopeStorageToUser(tg?.initDataUnsafe.user?.id)
 const root = createRoot(document.getElementById("root")!)
 
 async function boot() {
-  if (import.meta.env.DEV && new URLSearchParams(location.search).has("mock")) (await import("./dev/mock")).installMock()
+  // read-only demo with sample data (web), or the dev preview (`?mock`)
+  if (isDemo() || (import.meta.env.DEV && new URLSearchParams(location.search).has("mock"))) (await import("./lib/demo")).installMock()
   root.render(<div className="app"><div className="splash"><div className="splash-mark"><span className="splash-glow" /><img src="/keel-mark-red.svg" width={72} height={72} alt="Keel" /></div></div></div>)
   let cfg: AppConfig
   try {
@@ -62,7 +65,7 @@ async function boot() {
       <WagmiProvider config={wagmi}>
         <QueryClientProvider client={qc}>
           <RainbowKitProvider theme={lightTheme({ accentColor: "#E10600", accentColorForeground: "#FFFFFF", borderRadius: "large", overlayBlur: "small" })} modalSize="compact">
-            <App cfg={cfg} />
+            {isWeb() && !(import.meta.env.DEV && new URLSearchParams(location.search).has("mock")) ? <WebRoot cfg={cfg} /> : <App cfg={cfg} />}
           </RainbowKitProvider>
         </QueryClientProvider>
       </WagmiProvider>

@@ -1,5 +1,6 @@
 import type { Address } from "viem"
 import { handoffToken } from "./telegram"
+import { clearWebSession, sessionToken } from "./web"
 
 export interface TgWebApp {
   initData: string
@@ -61,6 +62,10 @@ export function authHeaders(): Record<string, string> {
   else {
     const t = handoffToken()
     if (t) h["x-keel-handoff"] = t
+    else {
+      const w = sessionToken()
+      if (w) h["x-keel-session"] = w
+    }
   }
   return h
 }
@@ -85,13 +90,20 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
     throw new ApiError(e.name === "TimeoutError" ? "Keel's server is not responding" : "Can't reach Keel's server", 0)
   })
   const data = await res.json().catch(() => ({}))
+  // a web session that ran out: drop it, so the app shows the sign-in screen again
+  if (res.status === 401 && (data as { code?: string }).code === "session") clearWebSession()
   if (!res.ok) throw new ApiError((data as { error?: string }).error ?? `Request failed (${res.status})`, res.status, (data as { code?: string }).code)
   return data as T
 }
 
 export const api = {
   config: () => call<AppConfig>("GET", "/api/config"),
-  me: () => call<{ tgId: number; username?: string; address: Address | null }>("GET", "/api/me"),
+  me: () => call<{ tgId: number | null; username?: string; address: Address | null; web?: boolean; telegram?: boolean }>("GET", "/api/me"),
+  webNonce: (address: Address) => call<{ nonce: string; message: string }>("POST", "/api/web/nonce", { address }),
+  webSession: (b: { address: Address; nonce: string; signature: string }) => call<{ token: string; expires: number; address: Address; telegram: boolean }>("POST", "/api/web/session", b),
+  webLogout: () => call<{ ok: boolean }>("POST", "/api/web/logout", {}),
+  webTelegram: () => call<{ linked: boolean; url?: string }>("POST", "/api/web/telegram", {}),
+  stats: (all = false) => call<StatsDto>("GET", `/api/stats${all ? "?all=1" : ""}`),
   nonce: () => call<{ nonce: string; message: string }>("POST", "/api/nonce", {}),
   bind: (b: { nonce: string; address: Address; signature: string; takeover?: boolean }) => call<{ address: Address }>("POST", "/api/bind", b),
   intent: (id: string) => call<IntentDto>("GET", `/api/intent/${id}`),
@@ -170,4 +182,34 @@ export interface ActivityItem {
   tx: string | null
   at: number
   params: Record<string, string>
+}
+
+/** Public on-chain stats (bot/src/stats.ts). Amounts are 18-decimal integer strings. */
+export interface StatsDto {
+  network: string
+  updatedAt: number
+  excludedTeam: boolean
+  guardians: number
+  wallets: number
+  activeLoans: number
+  musdBorrowed: string
+  btcCollateral: string
+  protections: ProtectionDto[]
+  revenue?: { protocolFeesBTC: string; protocolFeesMUSD: string; tipsBTC: string; tipsMUSD: string; treasury: string | null; feeBps: number | null }
+  contracts: Array<{ name: string; address: string; version: string; verified: boolean }>
+}
+
+export interface ProtectionDto {
+  tx: string
+  block: number
+  at: number
+  guardian: string
+  kind: "full" | "partial" | "insufficient"
+  btcAdded: string
+  musdRepaid: string
+  icrBefore: string
+  icrAfter: string
+  price: string | null
+  trigger: "price" | "owner" | "unknown"
+  team: boolean
 }

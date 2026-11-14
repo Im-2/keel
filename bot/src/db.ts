@@ -519,4 +519,27 @@ export class Store {
   setKv(key: string, value: string) {
     this.write("INSERT INTO kv (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", key, value)
   }
+  deleteKv(key: string) {
+    this.write("DELETE FROM kv WHERE key = ?", key)
+  }
+
+  /**
+   * Move everything owned by one account to another (a web-only account joining a Telegram account): intents, splits,
+   * shares, requests, alert state, queued messages and Premium. The old account row is deleted.
+   */
+  mergeUser(from: number, to: number) {
+    this.write("UPDATE intents SET tg_id = ? WHERE tg_id = ?", to, from)
+    this.write("UPDATE splits SET creator_tg = ? WHERE creator_tg = ?", to, from)
+    this.write("UPDATE split_shares SET tg_id = ? WHERE tg_id = ?", to, from)
+    this.write("UPDATE requests SET requester_tg = ? WHERE requester_tg = ?", to, from)
+    this.write("DELETE FROM alert_state WHERE tg_id = ?", from)
+    this.write("DELETE FROM outbox WHERE tg_id = ?", from)
+    const premium = Number(this.getKv(`premium:${from}`) ?? 0)
+    if (premium > Number(this.getKv(`premium:${to}`) ?? 0)) this.setKv(`premium:${to}`, String(premium))
+    this.write("DELETE FROM kv WHERE key = ?", `premium:${from}`)
+    this.write("DELETE FROM nonces WHERE tg_id = ?", from)
+    this.write("DELETE FROM handoffs WHERE tg_id = ?", from)
+    this.write("DELETE FROM users WHERE tg_id = ?", from)
+    this.upsertUser(to, this.getUser(to)?.username, this.getUser(to)?.first_name)
+  }
 }

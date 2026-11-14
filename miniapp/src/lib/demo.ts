@@ -1,5 +1,6 @@
-// Dev-only fixture API for previewing the UI outside Telegram (`vite dev`, then add `?mock` to the URL).
-// main.tsx imports this behind `import.meta.env.DEV`, so it never ships in a production build.
+// Sample-data API for the read-only demo (web: `?demo=1`, "Try the demo" on the landing page) and for previewing
+// the UI in development (`vite dev`, then `?mock`). Every number here is made up and the UI says so; nothing is
+// signed or sent, and the real server is only asked for the chain config and the public stats.
 const E = 10n ** 18n
 const s = (n: number) => (BigInt(Math.round(n * 1e6)) * 10n ** 12n).toString()
 const now = Math.floor(Date.now() / 1000)
@@ -48,6 +49,8 @@ const intents: Record<string, unknown> = {
   demo: { id: "demo", tg_id: 1, type: "send", params: { to: "0x00000000000000000000000000000000000000b2", amount: (25n * E).toString(), label: "@bob", memo: "Lunch" }, status: "pending" },
 }
 
+const DEMO_SIGN = "Demo mode uses sample data, so nothing can be signed. Sign in with your wallet to do this for real."
+
 export function installMock() {
   const q0 = new URLSearchParams(location.search)
   if (q0.has("tg")) {
@@ -86,18 +89,20 @@ export function installMock() {
     const json = (v: unknown, status = 200) => new Response(JSON.stringify(v), { status, headers: { "content-type": "application/json" } })
     if (!path.startsWith("/api/")) return real(input, init)
     await new Promise((r) => setTimeout(r, 350))
-    if (path === "/api/config") return real(input, init) // real chain config from the running bot
+    if (path === "/api/config" || path === "/api/stats") return real(input, init) // real chain config and public stats
+    if (path === "/api/me") return json({ tgId: null, username: "ada", address: position.address, web: true, telegram: false, demo: true })
+    if (path === "/api/web/telegram") return json({ linked: false, url: "https://t.me/KeelMezoBot" })
     const q = new URLSearchParams(location.search)
     if (path === "/api/position") return json(q.has("unlinked") ? { linked: false, user: { firstName: "Ada", username: "ada" } } : q.has("noloan") ? { ...position, wallet: { btc: q.has("empty") ? "0" : s(0.05), musd: "0" }, trove: null, redemption: null, guardian: null } : q.has("risk") ? { ...position, trove: { ...position.trove, icr: s(1.18), liqPrice: s(75600), bufferBps: 690, risk: "danger" } } : q.has("watch") ? { ...position, trove: { ...position.trove, icr: s(1.39) } } : position)
     if (path === "/api/market") return json({ source: "mock", prices, oracle: 81168 })
     if (path === "/api/activity") return json(activity)
     if (path.startsWith("/api/intent/")) return json(intents[path.split("/")[3]] ?? { error: "not found" }, intents[path.split("/")[3]] ? 200 : 404)
-    if (path === "/api/intent") return json({ error: "Preview mode: signing is disabled." }, 400)
+    if (path === "/api/intent") return json({ error: DEMO_SIGN }, 400)
     if (path.startsWith("/api/claim/")) return json({ sender: position.address, senderName: "@Nuelcrypt", amount: (20n * E).toString(), expiry: now + 2 * 86400, settled: false, status: q.has("claimed") ? "claimed" : "open", claimedBy: q.has("claimed") ? "@bob" : null })
     if (path === "/api/splits" && (!init?.method || init.method === "GET")) return json({ created: [split], owed: [owed], contacts: ["@bob", "@chidi", "@big_beccaa"] })
     if (path === "/api/splits") return json({ id: "Sp1itAbc", notReached: ["@eve_x"] })
     if (path.startsWith("/api/split/") && path.endsWith("/remind")) return json({ reminded: ["@chidi"], queued: [], links: [{ label: "@eve_x", link: "https://t.me/KeelMezoBot/app?startapp=split_Sp1itAbc_2" }], skipped: [] })
-    if (path.startsWith("/api/split/") && path.endsWith("/pay")) return json({ error: "Preview mode: signing is disabled." }, 400)
+    if (path.startsWith("/api/split/") && path.endsWith("/pay")) return json({ error: DEMO_SIGN }, 400)
     if (path.startsWith("/api/split/Ow3dXyz")) return json(owed)
     if (path.startsWith("/api/split/")) return json(split)
     if (path === "/api/handoff") return json({ token: "tok123", expires: now + 600, url: `${location.origin}/?w=tok123&r=link` })

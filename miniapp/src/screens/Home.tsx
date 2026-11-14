@@ -3,6 +3,7 @@ import { tg } from "../lib/api"
 import { go, useActivity, useMarket, usePosition } from "../lib/data"
 import { big, compact, fmtBtc, fmtIcr, fmtMusd, fmtUsd, icrPct, num, toneOf, E18 } from "../lib/units"
 import { Header } from "../ui/shell"
+import { TelegramNote } from "../web/TelegramNote"
 import { Button, Gauge, Glass, MezoBadge, Skeleton, Sparkline, StateView } from "../ui/kit"
 import { ActivityRow, explorerFor, useNewRows } from "../ui/activity"
 import { BalanceCard } from "../ui/balance"
@@ -124,6 +125,7 @@ export function Home({ ctx }: { ctx: AppCtx }) {
         )}
       </Glass>
 
+      <TelegramNote compact />
       <footer className="foot"><MezoBadge /></footer>
     </>
   )

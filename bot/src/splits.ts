@@ -7,6 +7,7 @@ import { notifyOrQueue, type Notifier } from "./notify"
 import { esc } from "./format"
 import { nameOf, receivedKey } from "./completion"
 import type { LiveBus } from "./live"
+import { isWebUser } from "./web-auth"
 
 /** Telegram plumbing the split card needs (bot.api in production, a recorder in tests). */
 export interface SplitTelegram {
@@ -201,7 +202,7 @@ export class Splits {
 
     const id = splitId()
     const title = input.title.trim() || "Shared bill"
-    const isGroup = (input.chatId ?? 0) < 0
+    const isGroup = (input.chatId ?? 0) < 0 && !isWebUser(input.chatId!)
     // a group split with nobody named: people join with "I'm in", the requester locks it
     if (!people.length) {
       if (!isGroup) return fail("Add at least one person, e.g. /split 90 @ada @bob dinner.")
@@ -252,7 +253,7 @@ export class Splits {
     }
 
     const split = store.createSplit(
-      { id, creator_tg: creator.tg_id, creator_address: creator.address, title, total: input.total.toString(), mine: mine.toString(), include_me: input.includeMe ? 1 : 0, mode, status: "open", due_at: input.dueAt ?? null, chat_id: input.chatId ?? creator.tg_id },
+      { id, creator_tg: creator.tg_id, creator_address: creator.address, title, total: input.total.toString(), mine: mine.toString(), include_me: input.includeMe ? 1 : 0, mode, status: "open", due_at: input.dueAt ?? null, chat_id: input.chatId ?? (isWebUser(creator.tg_id) ? null : creator.tg_id) },
       people.map((p, i) => ({ label: p.label, username: p.username, tg_id: p.tg_id, address: p.address, amount: amounts[i].toString() })),
     )
     await this.postCard(split)
