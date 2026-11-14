@@ -25,6 +25,12 @@ async function status(page: Page, url: string) {
 async function openLanding(page: Page) {
   await page.goto("/", { waitUntil: "domcontentloaded" })
   await expect(page.locator(".lp h1")).toBeVisible()
+  // a visitor moves the pointer or scrolls before clicking; that starts the scroll motion (Lenis, pinning).
+  // Wait for it and for the layout to settle, so clicks aren't measured against a page that is still moving.
+  await page.mouse.move(200, 200)
+  await page.mouse.move(260, 240)
+  await page.waitForFunction(() => !!(window as unknown as { __lenis?: unknown }).__lenis, null, { timeout: 30_000 }).catch(() => undefined)
+  await page.waitForTimeout(800)
 }
 
 /** Every link or button in the landing page, as stable selectors we can re-find after navigating back. */
@@ -118,10 +124,16 @@ test("every visible link and button is clickable and lands where it says", async
       }
       if (it.href.startsWith("#")) {
         await (isMobile ? el.tap() : el.click())
-        await page.waitForTimeout(1600) // smooth scroll
+        // smooth scroll: poll until the section is on screen (or give up after 8 s)
         const target = page.locator(it.href)
-        const box = await target.boundingBox()
-        if (!box || box.y > 900 || box.y + box.height < 0) problems.push(`anchor did not scroll to its section: ${label}`)
+        const vh = page.viewportSize()!.height
+        let ok = false
+        for (let t = 0; t < 32 && !ok; t++) {
+          await page.waitForTimeout(250)
+          const box = await target.boundingBox()
+          ok = !!box && box.y < vh * 0.6 && box.y + box.height > 0
+        }
+        if (!ok) problems.push(`anchor did not scroll to its section: ${label}`)
         continue
       }
       const want = new URL(it.href, baseURL)

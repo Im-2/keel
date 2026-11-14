@@ -326,13 +326,9 @@
 .built { display: inline-flex; align-items: center; gap: 8px; color: #fff; font-weight: 600; }
 .built img { border-radius: 5px; }
 
-/* ---------------------------------------------------------------- render only what's near the viewport
-   Below-the-fold sections skip style, layout and paint until they approach the screen (a large saving on phones).
-   "auto" remembers each section's real size once it has rendered; motion.ts re-measures scroll triggers when
-   sizes change. The pinned Guardian scene and the expanding card are left out on purpose. */
-/* Never on a section with links or buttons: a skipped subtree isn't hit-tested, which made the resource cards
-   un-clickable even on screen. */
-.features, .payments { content-visibility: auto; contain-intrinsic-size: auto 900px; }
+/* No content-visibility anywhere: a skipped section isn't hit-tested (links stopped working), and sections that
+   change height when they first render make the pinned scene re-flow, so everything below jumps under the
+   pointer. Stable layout matters more here than the small rendering saving. */
 
 /* ---------------------------------------------------------------- hero entrance: CSS, so it plays from the first paint */
 @keyframes lp-rise { from { opacity: 0; transform: translate3d(0, 34px, 0); } }

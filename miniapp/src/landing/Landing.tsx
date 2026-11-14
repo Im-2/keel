@@ -453,7 +453,7 @@ function Rail() {
         <h2>Dig deeper</h2>
         <span className="hint">Drag or swipe → · Deck also as <a href={LINKS.deckPptx} download>PPTX</a></span>
       </div>
-      <div className="rail" ref={ref} data-stagger>
+      <div className="rail" ref={ref}>
         {cards.map((c) => (
           <a key={c.t} className={`rcard ${c.tone}`} href={c.href} {...ext(c.href)} draggable={false}>
             <span className="rtag">{c.tag}</span>
