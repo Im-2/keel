@@ -61,16 +61,11 @@ export function initMotion(root: HTMLElement): () => void {
   const blur = (px: number) => (desktop ? `blur(${px}px)` : "blur(0px)")
 
   const ctx = gsap.context(() => {
-    // ---- hero entrance
-    const tl = gsap.timeline({ defaults: { ease: EASE } })
-    tl.from("[data-hero]", { y: 34, opacity: 0, filter: blur(12), duration: 1.4, stagger: 0.09 })
-      .from(".hero-phone", { y: 120, rotate: 5, opacity: 0, duration: 1.8 }, 0.15)
-      .from(".hero .float", { y: 40, scale: 0.85, opacity: 0, duration: 1.4, stagger: 0.12 }, 0.6)
-      .from(".hero .sph", { scale: 0.4, opacity: 0, duration: 2.2, stagger: 0.1 }, 0.1)
+    // (the hero entrance is a CSS animation in landing.css, so it plays from the first paint, before this loads)
 
-    // ---- ambient drift: every sphere and floating card breathes on its own slow loop
+    // ---- ambient drift: every sphere and floating card breathes on its own slow loop (after the CSS entrance)
     $$(".sph, .float").forEach((el, i) => {
-      gsap.to(el, { y: `+=${gsap.utils.random(10, 22)}`, x: `+=${gsap.utils.random(-10, 10)}`, rotate: el.classList.contains("float") ? gsap.utils.random(-1.5, 1.5) : 0, duration: gsap.utils.random(5, 9), ease: "sine.inOut", yoyo: true, repeat: -1, delay: i * 0.13 })
+      gsap.to(el, { delay: 1.8 + i * 0.13, y: `+=${gsap.utils.random(10, 22)}`, x: `+=${gsap.utils.random(-10, 10)}`, rotate: el.classList.contains("float") ? gsap.utils.random(-1.5, 1.5) : 0, duration: gsap.utils.random(5, 9), ease: "sine.inOut", yoyo: true, repeat: -1 })
     })
 
     // ---- parallax: data-speed > 1 moves faster than the page, < 1 slower (depth)

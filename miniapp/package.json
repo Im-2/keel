@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "node scripts/fetch-wallet-icons.mjs && vite build",
+    "build": "node scripts/fetch-wallet-icons.mjs && vite build && node scripts/prerender-landing.mjs",
     "wallet-icons": "node scripts/fetch-wallet-icons.mjs --force",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"

@@ -29,7 +29,9 @@ readHandoffFromUrl()
 // before wagmi restores any stored connection: it must belong to this Telegram account
 scopeStorageToUser(tg?.initDataUnsafe.user?.id)
 
-const root = createRoot(document.getElementById("root")!)
+const rootEl = document.getElementById("root")!
+rootEl.replaceChildren() // drop the prerendered landing markup (hidden for app launches) before the app renders
+const root = createRoot(rootEl)
 
 async function boot() {
   // read-only demo with sample data (web), or the dev preview (`?mock`)

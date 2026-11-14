@@ -28,7 +28,22 @@
     <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" media="print" onload="this.media='all'" />
     <!-- The Telegram SDK is loaded by src/main.tsx only when the app (not the landing page) is opened. -->
-    <style>html,body{background:#ffffff;margin:0}body{font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}</style>
+    <script>
+      // Same rule as src/main.tsx: a plain browser at "/" gets the (prerendered) landing page; everything else is the app.
+      (function () {
+        var h = location.hash, q = location.search, tg = /tgWebApp/.test(h + q) || "TelegramWebviewProxy" in window
+        try { tg = tg || /tgWebAppData/.test(sessionStorage.getItem("__telegram__initParams") || "") } catch (e) {}
+        var landing = !tg && location.pathname === "/" && (h === "" || h === "#" || h === "#/about") && !/[?&](w|demo|mock)=/.test(q)
+        document.documentElement.setAttribute("data-mode", landing ? "landing" : "app")
+        var css = "__LANDING_CSS__", js = "__LANDING_JS__"
+        if (landing && css.indexOf("__") !== 0) {
+          document.write('<link rel="stylesheet" href="' + css + '" />')
+          // fetch the landing's code alongside the entry instead of after it
+          js.split(",").forEach(function (f) { document.write('<link rel="modulepreload" crossorigin href="' + f + '" />') })
+        }
+      })()
+    </script>
+    <style>html,body{background:#ffffff;margin:0}body{font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}html[data-mode=app] #root>.lp{display:none}</style>
   </head>
   <body>
     <div id="root"></div>

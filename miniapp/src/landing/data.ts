@@ -55,7 +55,10 @@ export interface Stats {
 export async function fetchStats(signal?: AbortSignal, includeTeam = false): Promise<Stats> {
   const r = await fetch(`${API}/api/stats${includeTeam ? "?all=1" : ""}`, { signal })
   if (!r.ok) throw new Error(`stats ${r.status}`)
-  return (await r.json()) as Stats
+  const j = (await r.json().catch(() => null)) as Stats | null
+  // anything but the real shape (a sleeping host's error page, a proxy) is treated as "not available yet"
+  if (!j || typeof j.guardians !== "number" || !Array.isArray(j.protections)) throw new Error("stats: unexpected response")
+  return j
 }
 
 export const num = (v: string | undefined) => (v ? Number(BigInt(v) / 10n ** 12n) / 1e6 : 0)

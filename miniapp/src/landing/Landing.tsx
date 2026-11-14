@@ -36,7 +36,8 @@ function Btn({ href, children, kind = "primary", external = false }: { href: str
 /** Words that sharpen from blur as the paragraph scrolls through the viewport (motion.ts scrubs them). */
 function Words({ text, className = "" }: { text: string; className?: string }) {
   return (
-    <p className={`words ${className}`} aria-label={text}>
+    <p className={`words ${className}`}>
+      <span className="sr-only">{text}</span>
       {text.split(" ").map((w, i) => (
         <span key={i} aria-hidden className="w">{w} </span>
       ))}
@@ -498,7 +499,7 @@ function Footer() {
           </div>
           {cols.map(([h, links]) => (
             <nav key={h} className="foot-col" aria-label={h}>
-              <h4>{h}</h4>
+              <h3 className="foot-h">{h}</h3>
               {links.map(([l, href]) => (
                 <a key={l} href={href} {...(href.startsWith("http") ? { target: "_blank", rel: "noopener" } : {})}>{l}</a>
               ))}
@@ -520,10 +521,14 @@ export function Landing() {
   useEffect(() => {
     let cleanup: (() => void) | undefined
     let cancelled = false
-    // motion code (GSAP, Lenis) loads after the first paint so it never delays the hero
-    void import("./motion").then((m) => {
-      if (!cancelled && root.current) cleanup = m.initMotion(root.current)
-    })
+    // motion code (GSAP, Lenis) loads once the browser is idle, so it never delays or blocks the first paint
+    const start = () =>
+      void import("./motion").then((m) => {
+        if (!cancelled && root.current) cleanup = m.initMotion(root.current)
+      })
+    const ric = (window as unknown as { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number }).requestIdleCallback
+    if (ric) ric(start, { timeout: 2500 })
+    else setTimeout(start, 600)
     return () => {
       cancelled = true
       cleanup?.()
