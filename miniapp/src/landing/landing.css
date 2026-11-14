@@ -283,7 +283,7 @@
 .rail { display: flex; gap: 16px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 6px max(20px, calc((100vw - 1200px) / 2)) 24px; scrollbar-width: none; cursor: grab; overscroll-behavior-x: contain; }
 .rail::-webkit-scrollbar { display: none; }
 .rail.dragging { cursor: grabbing; scroll-snap-type: none; }
-.rail.dragging .rcard { pointer-events: none; }
+.rail.dragging .rcard { user-select: none; }
 .rcard { position: relative; flex: 0 0 auto; width: min(320px, 78vw); height: 400px; scroll-snap-align: start; display: flex; flex-direction: column; justify-content: flex-end; gap: 10px; padding: 26px; border-radius: 30px; text-decoration: none; overflow: hidden; border: 1px solid var(--line); transition: transform 0.6s var(--ease), box-shadow 0.6s var(--ease); user-select: none; }
 .rcard:hover { transform: translateY(-6px); box-shadow: 0 40px 60px -40px rgba(0, 0, 0, 0.4); }
 .rcard h3 { font-size: 26px; }
@@ -330,7 +330,9 @@
    Below-the-fold sections skip style, layout and paint until they approach the screen (a large saving on phones).
    "auto" remembers each section's real size once it has rendered; motion.ts re-measures scroll triggers when
    sizes change. The pinned Guardian scene and the expanding card are left out on purpose. */
-.features, .payments, .mezo, .stats, .rail-sec, .cta, .foot { content-visibility: auto; contain-intrinsic-size: auto 900px; }
+/* Never on a section with links or buttons: a skipped subtree isn't hit-tested, which made the resource cards
+   un-clickable even on screen. */
+.features, .payments { content-visibility: auto; contain-intrinsic-size: auto 900px; }
 
 /* ---------------------------------------------------------------- hero entrance: CSS, so it plays from the first paint */
 @keyframes lp-rise { from { opacity: 0; transform: translate3d(0, 34px, 0); } }

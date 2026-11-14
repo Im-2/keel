@@ -1,0 +1,4 @@
+{
+  "$comment": "Single source for public links used by the landing page, the in-site docs, the deck build and scripts/sync-links.mjs (README, submission text). Leave demoVideoUrl empty to hide every video link.",
+  "demoVideoUrl": ""
+}

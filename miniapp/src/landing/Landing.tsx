@@ -22,12 +22,16 @@ function Float({ children, className = "", speed = 0, style }: { children: React
   return <div className={`float ${className}`} data-speed={speed || undefined} style={style}>{children}</div>
 }
 
+/** New tab for other sites and documents (PDF/PPTX); same tab for Keel's own pages. */
+export const ext = (href: string) =>
+  /^https?:\/\//.test(href) || /\.(pdf|pptx)$/.test(href) ? { target: "_blank", rel: "noopener noreferrer" } : {}
+
 const Arrow = () => <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden><path d="M3 8h10M9 4l4 4-4 4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
 const TgIcon = () => <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden><path fill="currentColor" d="M21.9 4.3 18.8 19c-.2 1-.9 1.3-1.7.8l-4.7-3.5-2.3 2.2c-.3.3-.5.5-1 .5l.3-4.8 8.8-8c.4-.3-.1-.5-.6-.2L6.7 12.8 2 11.3c-1-.3-1-1 .2-1.5L20.6 2.9c.9-.3 1.6.2 1.3 1.4Z" /></svg>
 
 function Btn({ href, children, kind = "primary", external = false }: { href: string; children: ReactNode; kind?: "primary" | "ghost" | "light" | "dark"; external?: boolean }) {
   return (
-    <a className={`btn btn-${kind}`} data-magnetic href={href} {...(external ? { target: "_blank", rel: "noopener" } : {})}>
+    <a className={`btn btn-${kind}`} data-magnetic href={href} {...(external ? { target: "_blank", rel: "noopener noreferrer" } : {})}>
       <span>{children}</span>
     </a>
   )
@@ -61,10 +65,11 @@ function Nav() {
           <a href="#guardian">Guardian</a>
           <a href="#payments">Payments</a>
           <a href="#developers">Developers</a>
+          <a href={LINKS.docs}>Docs</a>
           <a href={LINKS.stats}>Stats</a>
         </nav>
         <div className="nav-cta">
-          <a className="btn btn-ghost btn-sm" href={LINKS.telegram} target="_blank" rel="noopener"><TgIcon /> <span>Open in Telegram</span></a>
+          <a className="btn btn-ghost btn-sm" href={LINKS.telegram} target="_blank" rel="noopener noreferrer"><TgIcon /> <span>Open in Telegram</span></a>
           <a className="btn btn-primary btn-sm" href={LINKS.webApp}><span>Open web app</span></a>
         </div>
         <button className="nav-toggle" aria-expanded={open} aria-controls="mobile-menu" aria-label={open ? "Close menu" : "Open menu"} onClick={() => setOpen(!open)}>
@@ -72,11 +77,11 @@ function Nav() {
         </button>
       </div>
       <div id="mobile-menu" className="nav-sheet" hidden={!open}>
-        {[["#product", "Product"], ["#guardian", "Guardian"], ["#payments", "Payments"], ["#developers", "Developers"], [LINKS.stats, "Stats"]].map(([h, l]) => (
+        {[["#product", "Product"], ["#guardian", "Guardian"], ["#payments", "Payments"], ["#developers", "Developers"], [LINKS.docs, "Docs"], [LINKS.stats, "Stats"]].map(([h, l]) => (
           <a key={h} href={h} onClick={() => setOpen(false)}>{l}</a>
         ))}
         <a className="btn btn-primary" href={LINKS.webApp}>Open web app</a>
-        <a className="btn btn-ghost" href={LINKS.telegram} target="_blank" rel="noopener"><TgIcon /> Open in Telegram</a>
+        <a className="btn btn-ghost" href={LINKS.telegram} target="_blank" rel="noopener noreferrer"><TgIcon /> Open in Telegram</a>
       </div>
     </header>
   )
@@ -220,7 +225,7 @@ function GuardianScene() {
               <li key={t} data-gstep={i}><b>{t}</b><span>{d}</span></li>
             ))}
           </ol>
-          <p className="fine">On Mezo testnet the keeper took a real loan from 159.9% to 179.9% in about a minute. <a href={LINKS.status} target="_blank" rel="noopener">See the transactions</a>.</p>
+          <p className="fine">On Mezo testnet the keeper took a real loan from 159.9% to 179.9% in about a minute. <a href={LINKS.status} target="_blank" rel="noopener noreferrer">See the transactions</a>.</p>
         </div>
         <div className="g-visual" aria-hidden>
           <Sphere size={200} depth={2} className="g-s1" />
@@ -299,7 +304,7 @@ function BuiltOnMezo() {
             {CONTRACTS.map((c) => (
               <li key={c.address}>
                 <span>{c.name}</span>
-                <a href={c.url} target="_blank" rel="noopener"><code>{c.address.slice(0, 6)}…{c.address.slice(-4)}</code>{c.verified && <em> ✓ verified</em>} <Arrow /></a>
+                <a href={c.url} target="_blank" rel="noopener noreferrer"><code>{c.address.slice(0, 6)}…{c.address.slice(-4)}</code>{c.verified && <em> ✓ verified</em>} <Arrow /></a>
               </li>
             ))}
           </ul>
@@ -367,7 +372,7 @@ function StatsBand() {
             {s.protections.slice(0, 3).map((p) => (
               <li key={p.tx}>
                 <span>{p.kind === "partial" ? "Partial rescue" : p.kind === "insufficient" ? "Reserve too small" : "Protected"} · {(num(p.icrBefore) * 100).toFixed(1)}% → {(num(p.icrAfter) * 100).toFixed(1)}%</span>
-                <a href={`${LINKS.explorer}/tx/${p.tx}`} target="_blank" rel="noopener">{p.tx.slice(0, 10)}… <Arrow /></a>
+                <a href={`${LINKS.explorer}/tx/${p.tx}`} target="_blank" rel="noopener noreferrer">{p.tx.slice(0, 10)}… <Arrow /></a>
               </li>
             ))}
           </ul>
@@ -384,33 +389,40 @@ function StatsBand() {
 
 function Rail() {
   const cards = [
-    { t: "Pitch deck", d: "Problem, product, Mezo integration, business model and roadmap.", href: LINKS.deck, tag: "PDF", tone: "red" },
-    { t: "Demo video", d: LINKS.video ? "Two minutes: borrow, protection and payments on testnet." : "Two-minute walkthrough. Link coming soon; try the demo meanwhile.", href: LINKS.video ?? LINKS.demo, tag: "Video", tone: "dark" },
+    { t: "Pitch deck", d: "Problem, product, Mezo integration, business model and roadmap. PDF, opens in a new tab.", href: LINKS.deck, tag: "PDF", tone: "red" },
+    ...(LINKS.video ? [{ t: "Demo video", d: "Two minutes: borrow, protection and payments on Mezo testnet.", href: LINKS.video, tag: "Video", tone: "dark" }] : []),
+    { t: "Docs", d: "How Keel works: borrowing, the Guardian, payments, security and contracts.", href: LINKS.docs, tag: "Docs", tone: "dark" },
+    { t: "Verified contracts", d: "Every Keel contract, v1 and v2, with its verified source on the Mezo explorer.", href: LINKS.contracts, tag: "Contracts", tone: "coral" },
+    { t: "Live stats", d: "Guardians, loans and keeper protections, read straight from the chain.", href: LINKS.stats, tag: "Stats", tone: "light" },
     { t: "GitHub", d: "Contracts, bot, Mini App and tests. GPL-3.0.", href: LINKS.github, tag: "Code", tone: "light" },
-    { t: "Verified contracts", d: "Guardian, factory, KeelPay and KeelPro on the Mezo explorer.", href: `${LINKS.explorer}/address/${CONTRACTS[0]?.address ?? ""}`, tag: "Explorer", tone: "coral" },
-    { t: "Docs", d: "README, testnet evidence and the business model.", href: LINKS.readme, tag: "Docs", tone: "light" },
   ]
   const ref = useRef<HTMLDivElement>(null)
   useEffect(() => {
     // drag to scroll with a mouse; touch scrolls natively
     const el = ref.current
     if (!el) return
+    // A plain click must reach the card's link: nothing changes until the pointer has really moved (> 6px),
+    // and only a click that ends such a drag is cancelled. (Previously the drag state switched off the cards'
+    // pointer events on every mousedown, so the click landed on the rail and no link ever opened.)
     let down = false
     let startX = 0
     let start = 0
     let moved = false
     const onDown = (e: PointerEvent) => {
-      if (e.pointerType !== "mouse") return
+      if (e.pointerType !== "mouse" || e.button !== 0) return
       down = true
       moved = false
       startX = e.clientX
       start = el.scrollLeft
-      el.classList.add("dragging")
     }
     const onMove = (e: PointerEvent) => {
       if (!down) return
       const dx = e.clientX - startX
-      if (Math.abs(dx) > 4) moved = true
+      if (!moved && Math.abs(dx) <= 6) return
+      if (!moved) {
+        moved = true
+        el.classList.add("dragging")
+      }
       el.scrollLeft = start - dx
     }
     const onUp = () => {
@@ -418,7 +430,11 @@ function Rail() {
       el.classList.remove("dragging")
     }
     const onClick = (e: MouseEvent) => {
-      if (moved) e.preventDefault()
+      if (moved) {
+        e.preventDefault()
+        e.stopPropagation()
+        moved = false
+      }
     }
     el.addEventListener("pointerdown", onDown)
     addEventListener("pointermove", onMove)
@@ -435,11 +451,11 @@ function Rail() {
     <section className="rail-sec" aria-label="Resources">
       <div className="wrap rail-head" data-reveal>
         <h2>Dig deeper</h2>
-        <span className="hint">Drag or swipe →</span>
+        <span className="hint">Drag or swipe → · Deck also as <a href={LINKS.deckPptx} download>PPTX</a></span>
       </div>
       <div className="rail" ref={ref} data-stagger>
         {cards.map((c) => (
-          <a key={c.t} className={`rcard ${c.tone}`} href={c.href} target={c.href.startsWith("/") ? undefined : "_blank"} rel="noopener" draggable={false}>
+          <a key={c.t} className={`rcard ${c.tone}`} href={c.href} {...ext(c.href)} draggable={false}>
             <span className="rtag">{c.tag}</span>
             <Sphere size={c.tone === "red" ? 120 : 84} depth={0} className="rsph" />
             <h3>{c.t}</h3>
@@ -479,9 +495,9 @@ function Cta() {
 function Footer() {
   const cols: Array<[string, Array<[string, string]>]> = [
     ["Product", [["Borrow", "#product"], ["Guardian", "#guardian"], ["Payments", "#payments"], ["Live stats", LINKS.stats], ["Try the demo", LINKS.demo]]],
-    ["Developers", [["GitHub", LINKS.github], ["Contracts", "#developers"], ["Testnet evidence", LINKS.status], ["README", LINKS.readme]]],
+    ["Developers", [["Docs", LINKS.docs], ["Verified contracts", LINKS.contracts], ["Developer guide", "/docs/developers"], ["GitHub", LINKS.github], ["Testnet evidence", LINKS.status]]],
     ["Mezo", [["mezo.org", LINKS.mezo], ["MUSD source", LINKS.musd], ["Testnet explorer", LINKS.explorer]]],
-    ["Resources", [["Pitch deck", LINKS.deck], ["Business model", LINKS.business], ["@KeelMezoBot", LINKS.bot]]],
+    ["Resources", [["Pitch deck (PDF)", LINKS.deck], ["Business model", LINKS.business], ["Wave 2 checklist", "/docs/wave2"], ["FAQ", "/docs/faq"], ["@KeelMezoBot", LINKS.bot], ...(LINKS.video ? [["Demo video", LINKS.video] as [string, string]] : [])]],
   ]
   return (
     <footer className="foot" data-footer>
@@ -491,8 +507,8 @@ function Footer() {
             <a className="brand light" href="#top"><img src="/keel-mark-red.svg" width={34} height={34} alt="" /><span>Keel</span></a>
             <p>A BTC-backed dollar account on Mezo: borrow MUSD, stay protected from liquidation, and pay anyone, in Telegram or the browser.</p>
             <div className="social">
-              <a href={LINKS.bot} target="_blank" rel="noopener" aria-label="Keel on Telegram"><TgIcon /></a>
-              <a href={LINKS.github} target="_blank" rel="noopener" aria-label="Keel on GitHub">
+              <a href={LINKS.bot} target="_blank" rel="noopener noreferrer" aria-label="Keel on Telegram"><TgIcon /></a>
+              <a href={LINKS.github} target="_blank" rel="noopener noreferrer" aria-label="Keel on GitHub">
                 <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden><path fill="currentColor" d="M12 .5a11.5 11.5 0 0 0-3.6 22.4c.6.1.8-.3.8-.6v-2c-3.2.7-3.9-1.5-3.9-1.5-.5-1.3-1.3-1.7-1.3-1.7-1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.7-1.6-2.6-.3-5.3-1.3-5.3-5.7 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3.2 1.2a11 11 0 0 1 5.8 0c2.2-1.5 3.2-1.2 3.2-1.2.6 1.6.2 2.8.1 3.1.8.8 1.2 1.8 1.2 3.1 0 4.4-2.7 5.4-5.3 5.7.4.4.8 1.1.8 2.2v3.2c0 .3.2.7.8.6A11.5 11.5 0 0 0 12 .5Z" /></svg>
               </a>
             </div>
@@ -501,7 +517,7 @@ function Footer() {
             <nav key={h} className="foot-col" aria-label={h}>
               <h3 className="foot-h">{h}</h3>
               {links.map(([l, href]) => (
-                <a key={l} href={href} {...(href.startsWith("http") ? { target: "_blank", rel: "noopener" } : {})}>{l}</a>
+                <a key={l} href={href} {...ext(href)}>{l}</a>
               ))}
             </nav>
           ))}

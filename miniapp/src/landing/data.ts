@@ -1,4 +1,5 @@
 import testnet from "../../../shared/deployments/testnet.json"
+import keelConfig from "../../../keel.config.json"
 
 export const LINKS = {
   telegram: "https://t.me/KeelMezoBot/app",
@@ -9,9 +10,13 @@ export const LINKS = {
   github: "https://github.com/Im-2/keel",
   readme: "https://github.com/Im-2/keel#readme",
   status: "https://github.com/Im-2/keel/blob/main/docs/STATUS.md",
-  business: "https://github.com/Im-2/keel/blob/main/docs/BUSINESS.md",
+  business: "/docs/business",
+  docs: "/docs",
+  contracts: "/docs/contracts",
   deck: "/keel-deck.pdf",
-  video: (import.meta.env.VITE_DEMO_VIDEO_URL as string | undefined) || null,
+  deckPptx: "/keel-deck.pptx",
+  // one value for every video link (keel.config.json, or VITE_DEMO_VIDEO_URL at build time); empty hides them
+  video: ((import.meta.env.VITE_DEMO_VIDEO_URL as string | undefined) || keelConfig.demoVideoUrl || null) as string | null,
   mezo: "https://mezo.org",
   musd: "https://github.com/mezo-org/musd",
   explorer: "https://explorer.test.mezo.org",
