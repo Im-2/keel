@@ -80,6 +80,7 @@ test("every landing link has a real destination and the right new-tab behaviour"
 })
 
 test("every visible link and button is clickable and lands where it says", async ({ page, baseURL, isMobile, context }) => {
+  test.setTimeout(900_000) // ~50 links, each opened from a fresh page load
   await openLanding(page)
   const items = await inventory(page)
   const visible = items.filter((x) => !x.skip && (isMobile ? !x.inDesktopNav : !x.inMobileMenu))

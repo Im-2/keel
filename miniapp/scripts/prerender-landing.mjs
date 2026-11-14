@@ -63,7 +63,10 @@ const urls = [`${SITE}/`, `${SITE}/stats`]
 for (const p of docs.pages) {
   const route = p.slug === "overview" ? "/docs" : `/docs/${p.slug}`
   const url = `${SITE}${route}`
-  const html = head(`${p.title} · Keel docs`, p.description, url).replace('<div id="root"></div>', `<div id="root">${docs.render(p.slug)}</div>`)
+  const body = docs.render(p.slug)
+  // a docs page whose markdown didn't make it into the build must fail the build, not ship as "Missing page"
+  if (body.includes("<h1>Missing page</h1>")) throw new Error(`docs page "${p.slug}" has no markdown (is docs/ excluded from the build?)`)
+  const html = head(`${p.title} · Keel docs`, p.description, url).replace('<div id="root"></div>', `<div id="root">${body}</div>`)
   const dir = path.join(dist, ...route.split("/").filter(Boolean))
   fs.mkdirSync(dir, { recursive: true })
   fs.writeFileSync(path.join(dir, "index.html"), html)

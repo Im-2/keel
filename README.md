@@ -22,8 +22,9 @@
   <a href="docs/keel-deck.pdf"><b>Pitch deck (PDF)</b></a> ·
   <a href="https://keel-miniapp.vercel.app/stats"><b>Live stats</b></a> ·
   <a href="docs/BUSINESS.md">Business model</a> ·
-  <a href="docs/STATUS.md">Testnet evidence</a> ·
-  <b>Demo video</b> (link coming soon)
+  <a href="https://keel-miniapp.vercel.app/docs"><b>Docs</b></a> ·
+  <a href="docs/WAVE2_CHECKLIST.md">Wave 2 checklist</a> ·
+  <a href="docs/STATUS.md">Testnet evidence</a><!-- video --><!-- /video -->
 </p>
 
 <p align="center">

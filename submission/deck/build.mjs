@@ -10,6 +10,8 @@ const here = path.dirname(fileURLToPath(process.env.DECK_DIR ? pathToFileURL(pat
 const out = path.join(here, "..")
 const API = process.env.KEEL_API ?? "https://keel-bot.onrender.com"
 const TESTS = process.env.KEEL_TESTS ?? "320"
+// the single video URL (keel.config.json); empty means no video line anywhere
+const VIDEO = JSON.parse(fs.readFileSync(path.join(here, "..", "..", "keel.config.json"), "utf8")).demoVideoUrl || ""
 const CHROME = process.env.CHROME_PATH ?? "C:/Program Files/Google/Chrome/Application/chrome.exe"
 
 const get = async (q) => (await fetch(`${API}/api/stats${q}`, { signal: AbortSignal.timeout(120_000) })).json()
@@ -24,6 +26,7 @@ const tokens = {
   EXT_GUARDIANS: String(ext.guardians),
   TESTS,
   STATS_DATE: new Date(all.updatedAt * 1000).toISOString().slice(0, 10),
+  VIDEO_LINE: VIDEO ? `\n      <li>Demo video: ${VIDEO.replace(/^https?:\/\//, "")}</li>` : "",
 }
 let html = fs.readFileSync(path.join(here, "deck.html"), "utf8")
 for (const [k, v] of Object.entries(tokens)) html = html.replaceAll(`{{${k}}}`, v)

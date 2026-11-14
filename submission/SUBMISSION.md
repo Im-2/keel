@@ -15,7 +15,8 @@
 | Pitch deck | https://keel-miniapp.vercel.app/keel-deck.pdf (also `submission/keel-deck.pdf`, `.pptx`) |
 | Code | https://github.com/Im-2/keel |
 | Business model | https://github.com/Im-2/keel/blob/main/docs/BUSINESS.md |
-| Demo video | add link |
+<!-- video --><!-- /video -->| Docs | https://keel-miniapp.vercel.app/docs |
+| Wave 2 checklist (evidence for each judge point) | https://keel-miniapp.vercel.app/docs/wave2 |
 
 ## Contracts on Mezo testnet (all verified on explorer.test.mezo.org)
 

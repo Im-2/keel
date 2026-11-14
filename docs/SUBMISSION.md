@@ -24,7 +24,7 @@ Also working: natural-language chat (rule-based, no LLM) and x402 pay-per-use pr
 
 **Open source / reuse:** `contracts/` forks mezo-org/musd (GPL-3.0), vendored unmodified for integration testing; Keel's own contracts (`contracts/contracts/keel/`) are GPL-3.0. See NOTICE.md.
 
-**Links:** Bot: https://t.me/KeelMezoBot · Mini App: https://t.me/KeelMezoBot/app · Repo: https://github.com/Im-2/keel · Demo video: `<url>` · Deck: `<url>`
+**Links:** Bot: https://t.me/KeelMezoBot · Mini App: https://t.me/KeelMezoBot/app · Repo: https://github.com/Im-2/keel · Deck: https://keel-miniapp.vercel.app/keel-deck.pdf
 
 ## Updates in this Wave (1,753 characters, limit 3,000)
 
