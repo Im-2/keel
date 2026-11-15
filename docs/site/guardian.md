@@ -69,7 +69,8 @@ The owner pays at most `tipBps` (≤ 1%) of the amount applied. In v2 a share of
 ## What's proven on testnet
 
 - **v1:** four keeper protections on testnet, two triggered by real BTC price moves. Both price-triggered ones were partial top-ups, because the reserves were almost empty; that is exactly the case v2 now reports explicitly. See [Live stats](https://keel-miniapp.vercel.app/stats).
-- **v2:** 17 contract tests against the real MUSD stack, covering full, partial and impossible rescues, Recovery Mode, minimum net debt, dust, repeated calls, tip limits, re-entrancy and owner-only control. On-chain v2 runs are listed in the [Wave 2 checklist](../WAVE2_CHECKLIST.md).
+- **v2:** 17 contract tests against the real MUSD stack, covering full, partial and impossible rescues, Recovery Mode, minimum net debt, dust, repeated calls, tip limits, re-entrancy and owner-only control.
+- **v2 on testnet:** a fresh wallet ran an insufficient, a partial and a full rescue, with `protect()` signed by the keeper wallet's key, with transaction links in the [Wave 2 checklist](../WAVE2_CHECKLIST.md).
 
 ## Your control
 

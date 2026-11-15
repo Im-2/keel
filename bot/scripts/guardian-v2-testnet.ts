@@ -33,7 +33,7 @@ const KEYS = path.join(ROOT, ".keel-local-keys.json")
 const STATE = path.join(ROOT, ".keel-data", "guardian-v2-e2e.json")
 const DEPLOYMENTS = path.join(ROOT, "shared", "deployments", "testnet.json")
 const EXPLORER = "https://explorer.test.mezo.org"
-const NEED = parseEther("0.06")
+const NEED = parseEther("0.05")
 
 const dep = getDeployment("testnet")
 if (dep.keel?.version !== 2) throw new Error("shared/deployments/testnet.json has no v2 deployment")
@@ -206,17 +206,37 @@ if (ins) {
 // ---------------------------------------------------------------- (b) PARTIAL: a reserve worth ~30% of the shortfall
 if (!state.txs.partial) {
   const p = await preview(g)
+  // the wallet is nearly spent after opening the loan: ~15% of the shortfall is enough to show a partial rescue
   const short = p.btcShortfallToTarget > 0n ? p.btcShortfallToTarget : parseEther("0.002")
-  await runPlan("fundSmall", "fund_reserve", { amount: ((short * 30n) / 100n).toString() })
+  await runPlan("fundSmall", "fund_reserve", { amount: ((short * 15n) / 100n).toString() })
 }
 const par = await protect("partial", g, 1)
 if (par) must(par.some((e) => e.eventName === "PartialRescue"), "no PartialRescue event")
 
-// ---------------------------------------------------------------- (a) FULL: add the reported shortfall (+2%)
+// ---------------------------------------------------------------- (a) FULL: the reserve covers a lowered trigger and target
+// The test wallet is nearly spent after opening the loan, so instead of funding the whole remaining shortfall the
+// owner moves the trigger just above today's ratio and the target one point higher (a rescue the reserve can fully
+// deliver), then funds exactly the reported shortfall (+2%) with a direct fundReserve() call (the Mini App plan
+// insists on a 0.002 BTC wallet buffer, which this wallet no longer has).
 if (!state.txs.full) {
   const p = await preview(g)
-  must(p.btcShortfallToTarget > 0n, "nothing left to top up for the full rescue")
-  await runPlan("fundRest", "fund_reserve", { amount: ((p.btcShortfallToTarget * 102n) / 100n).toString() })
+  const ratio = Number(p.icrBefore) / 1e18
+  const trigger = Math.floor(ratio * 100) + 2
+  const target = trigger + 1
+  console.log(`  full: ratio ${(ratio * 100).toFixed(2)}%; trigger -> ${trigger}%, target -> ${target}%`)
+  await runPlan("lowerTarget", "protect_config", { enabled: "true", minIcr: pct(trigger).toString(), targetIcr: pct(target).toString(), tipBps: "20", cooldown: "0" })
+  if (!state.txs.fundRest) {
+    await pause(4000)
+    const p2 = await preview(g)
+    must(p2.btcShortfallToTarget > 0n, "nothing to fund for the full rescue")
+    const amount = (p2.btcShortfallToTarget * 102n) / 100n
+    const h = await ownerW.writeContract({ address: g, abi: keelGuardianV2Abi, functionName: "fundReserve", value: amount, gas: 200_000n })
+    must((await pub.waitForTransactionReceipt({ hash: h })).status === "success", "fundReserve")
+    state.txs.fundRest = h
+    save()
+    console.log(`  fundRest: reserve +${formatEther(amount)} BTC: ${link(h)}`)
+    await pause(4000)
+  }
 }
 const full = await protect("full", g, 0)
 if (full) must(full.some((e) => e.eventName === "Protected") && !full.some((e) => e.eventName === "PartialRescue"), "full rescue events")

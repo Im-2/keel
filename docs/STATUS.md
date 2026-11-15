@@ -26,7 +26,7 @@ Explorer links: `https://explorer.test.mezo.org/tx/<hash>`.
 | Pitch deck | **Done** | `submission/keel-deck.pdf`, `submission/keel-deck.pptx`, `docs/keel-deck.pdf` |
 | Business model | **Done** | `docs/BUSINESS.md` |
 
-Not yet proven: a v2 protection on testnet (no v2 guardian exists yet), and any third-party user.
+Proven since: all three Guardian v2 paths on testnet (insufficient, partial, full), see `docs/WAVE2_CHECKLIST.md` §2d. Not yet proven: any third-party user.
 
 ## 1. Test suites and typechecks (run now)
 

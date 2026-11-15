@@ -10,7 +10,7 @@ Commit links point to [github.com/Im-2/keel](https://github.com/Im-2/keel/commit
 | # | Judge point | Status |
 |---|---|---|
 | 1 | A web link judges can open without Telegram | **Done and proven** |
-| 2 | `protect()` does a partial rescue instead of reverting | **Done and proven in tests and on testnet for v1 partial top-ups; the v2 on-chain run is not done yet** (needs testnet BTC, see 2d) |
+| 2 | `protect()` does a partial rescue instead of reverting | **Done and proven**: 17 contract tests, and all three paths (full, partial, insufficient) run on Mezo testnet (see 2d) |
 | 3 | Verify the sources on the Mezo explorer | **Done and proven** (7 of 7) |
 | 4 | A firmer revenue model | **Done**: protocol share live on-chain; KeelPro deployed; full model documented |
 | 5 | A pitch deck | **Done** |
@@ -68,32 +68,43 @@ BTC and MUSD are applied in one `adjustTrove`. `previewProtect()` returns the pl
 
 The bot side is also tested: the "reserve can't fully protect your loan" and "your guardian can't act yet" alerts (with the exact BTC plus 2%), and the partial-rescue notice (`bot/test/alerts-keeper-api.test.ts`).
 
-### 2d. v2 on Mezo testnet: deployed and verified, but the rescue runs are **not done yet**
+### 2d. v2 on Mezo testnet: done and proven (full, partial, insufficient)
 
 **Deployed and verified (deploy transactions):**
 - KeelGuardianFactoryV2: [0x98faa485…](https://explorer.test.mezo.org/tx/0x98faa485442c69b933ffe547d57bcc2f9eb0653532384d1bef06ac7ff339d0bf)
 - KeelPay v2: [0xdfcd666f…](https://explorer.test.mezo.org/tx/0xdfcd666fe08f3ad1bbdf5dd767203120ed57a19f6a17d1b8211d1b649da245db)
 - KeelPro: [0x5bd17e59…](https://explorer.test.mezo.org/tx/0x5bd17e59ce1dd6e2f963a89a75bca2f3faa028210a37804bccf078ee0a16b217)
 
-The keeper, bot, API and app support v1 and v2 side by side.
+**The run:** `bot/scripts/guardian-v2-testnet.ts`, with a **fresh wallet** `0xf44c91FF…3001` (a team test wallet, so [/stats](https://keel-miniapp.vercel.app/stats) doesn't count it as a user). It went through the production code paths:
+- The loan, reserve and settings use the Mini App's own transaction plans.
+- `protect()` is signed by the production **keeper wallet's key** (the script calls it directly, the same transaction the running keeper sends; the running keeper process itself did not make these calls).
+- The "add X BTC" message comes from the bot's real alert engine reading the real chain.
 
-**What's ready:** `bot/scripts/guardian-v2-testnet.ts` runs the three rescues on one fresh loan, through the production code paths (Mini App plans, the keeper key, the bot's alert engine):
-- (c) insufficient, with an empty reserve;
-- (b) partial, with about 30% of the shortfall;
-- (a) full, after adding the reported shortfall.
+The guardian is [0xE7f4B337…B3D6](https://explorer.test.mezo.org/address/0xE7f4B337Af04d094CEB9137952be472585AaB3D6), a KeelGuardianV2 clone made by factory v2, with a loan of 1,800 MUSD (BTC at $64,230 on Mezo's oracle).
 
-**Why it hasn't run:** the team's deployer wallet holds 0.0006 testnet BTC. One minimum MUSD loan needs about 0.05 BTC, and the Mezo faucet is behind a CAPTCHA that only a person can complete.
+| Step | Transaction |
+|---|---|
+| Create the guardian (factory v2) | [0xf1cf33a6…](https://explorer.test.mezo.org/tx/0xf1cf33a6723e3c026c0493ae16ebfdf0930f8d90acd920c8172ab54ad3fc6ca0) |
+| Open the loan (1,800 MUSD at 150%) | [0x0b1a3186…](https://explorer.test.mezo.org/tx/0x0b1a31869cf624d0e3a04a34081ca957761341057d275cb0f884cf56fa7c5f0b) |
+| Protection settings (trigger 165%, target 175%, no cooldown for the test) | [0xc0376e37…](https://explorer.test.mezo.org/tx/0xc0376e371ef3bb95d92c50d4e1c32d0ee4f3f3469447e42e3b5dac7369c89281) |
 
-**To finish it:**
-1. Send about **0.06 testnet BTC** from [the faucet](https://faucet.test.mezo.org) to the test wallet `0xf44c91FFE03bb6e540253706338e196f6c3D3001`. It's listed as a team wallet, so `/stats` won't count it as a user.
-2. Run `cd bot && npx tsx --env-file=../.env scripts/guardian-v2-testnet.ts`.
-3. The transaction hashes are written to `.keel-data/guardian-v2-e2e.json` and appear on [/stats](https://keel-miniapp.vercel.app/stats) (tick "include the team's wallets").
-
-| Run | Transaction | Result |
+| Rescue | Transaction | What the chain shows |
 |---|---|---|
-| (c) insufficient (empty reserve) | *pending: needs testnet BTC* | |
-| (b) partial (small reserve) | *pending* | |
-| (a) full (reserve topped up by the reported shortfall) | *pending* | |
+| **(c) Insufficient** (reserve empty, ratio 150.06% under the 165% trigger) | [0xaf122e65…](https://explorer.test.mezo.org/tx/0xaf122e65c4e9dfa49f9943cb9673af5df4929a5e4a956428368ee56af468695a) | `protect()` **did not revert** and returned `Insufficient`. It emitted `InsufficientReserve(icr 150.06%, btcShortfallToMCR 0, btcShortfallToTarget 0.007785 BTC, recoveryMode false)`. **No `Protected` event; no funds, tip or fee moved.** |
+| **(b) Partial** (reserve ≈ 15% of the shortfall: [0xf2dcd323…](https://explorer.test.mezo.org/tx/0xf2dcd32387f8dacc1d530a6d3ced52ea53a81799505be41e4e967b80c1569d7e)) | [0x4dd138e6…](https://explorer.test.mezo.org/tx/0x4dd138e6f7c0512d725ad9d343c0b9066507b47cc39f5be2c17f224ee3777bf8) | Returned `Partial`. `Protected` added 0.001153 BTC: ratio **150.14% → 153.84%**. `PartialRescue` reports **0.006601 BTC** still missing to the 175% target. Tip paid and `ProtocolFeePaid` 0.00000046 BTC to the treasury |
+| **(a) Full** (trigger and target lowered to 156% and 157% so the reserve could finish the job: [settings](https://explorer.test.mezo.org/tx/0x883cc8592398fd7afab25b0bf09355359b94ce825e6b29dbfadaa3e081efe8a9), then the reserve topped up by exactly the reported shortfall +2%: [fundReserve](https://explorer.test.mezo.org/tx/0x9329ffb29cf65579f1a48e381f86bed1fa58da5c76422bb22e3b04a90f5b563a)) | [0x00f038c1…](https://explorer.test.mezo.org/tx/0x00f038c1b934fb067b2f5704036aa8e937dd038772b1153c64676fa885fc341b) | Returned `Full`. `Protected` added 0.000855 BTC: ratio **154.25% → 157.00%, exactly the target**. No `PartialRescue`. `ProtocolFeePaid` 0.00000034 BTC to the treasury |
+
+**The owner is told how much to add** (the bot's real alert engine reading this loan after step (c)):
+
+> 🚨 Your guardian can't act yet. Your ratio is 150%, under your 165% trigger, and the reserve (0 BTC) is too small for a top-up Mezo would accept. Add **0.00795 BTC** to the reserve and the next keeper check rescues it.
+
+The BTC figure is the reported shortfall plus 2%, rounded up. The alert's own code path (message plus a one-tap fund-reserve button) is covered by `bot/test/alerts-keeper-api.test.ts`.
+
+**The first protocol revenue:** the two rescues paid **0.0000008 BTC** to the treasury through `ProtocolFeePaid`, exactly 20% of each keeper tip (tip 0.2% of the amount applied). It's tiny, because this is a test with a few thousandths of a BTC, but it shows the on-chain split working.
+
+**On [/stats](https://keel-miniapp.vercel.app/stats)** (tick "include the Keel team's own and test wallets"): all three runs appear, with the ratio before and after, and the revenue panel shows the protocol fees.
+
+**What this does not show.** The `Insufficient` run happened above 110%, because the wallet could afford only a loan at 150%. It proves the no-revert path, the event and the shortfall, but not the sub-110% case where Mezo would reject a top-up. That case is proven in the contract tests (which show Mezo rejecting the sub-110% top-up), because forcing a real loan below 110% on a shared testnet means moving the oracle price.
 
 ### 2e. What testnet already shows (v1): proven
 v1 guardians on testnet, read on-chain by [/stats](https://keel-miniapp.vercel.app/stats). All four are team wallets:
@@ -105,7 +116,7 @@ v1 guardians on testnet, read on-chain by [/stats](https://keel-miniapp.vercel.a
 | [0x343eaafc…](https://explorer.test.mezo.org/tx/0x343eaafcf9d1bdf3938f4bc2ccae67c96d2a9de96b5b01a78b98dac1a9e345e3) | partial | 169.9% → 170.2% | $76,248 | **BTC price move** |
 | [0xabba0640…](https://explorer.test.mezo.org/tx/0xabba06409de091defae74c7cf7fe71d2dc1c1c2160ab120ba250c931ff98bb7d) | partial | 146.3% → 146.4% | $65,477 | **BTC price move** |
 
-The two price-triggered protections were real market moves, and they were partial because those reserves were nearly empty. That is exactly the case v2 now reports explicitly, with the BTC to add.
+The two price-triggered protections were real market moves, and they were partial because those reserves were nearly empty. That is exactly the case v2 now reports explicitly, with the BTC to add (see 2d for the v2 runs).
 
 ## 3. Verified sources on the Mezo explorer: done and proven (7 of 7)
 
@@ -129,7 +140,7 @@ Each page shows "Contract source code verified (exact match)": solc 0.8.24+commi
   - It is 20% now, **hard-capped at 50%** in both `KeelGuardianFactoryV2` and `KeelGuardianV2`.
   - The owner never pays more than the tip, which is itself capped at 1%.
   - Every payment is a `ProtocolFeePaid` event, shown in the [/stats](https://keel-miniapp.vercel.app/stats) revenue panel.
-  - **Limitation:** no fee has been collected yet, because no v2 guardian has been protected (see 2d).
+  - **Collected so far:** 0.0000008 BTC, from the two v2 rescues in 2d (20% of each tip). It's tiny because it's a test.
 - **KeelPro subscription contract:** deployed and verified. It pays MUSD straight to the treasury and the price is hard-capped. The Pro features in the app aren't built yet.
 - **Documented:** [Business model](BUSINESS.md) covers:
   - target users;
@@ -155,7 +166,7 @@ Each page shows "Contract source code verified (exact match)": solc 0.8.24+commi
   - revenue.
 
   Team and test wallets (listed in `shared/deployments/testnet.json` → `teamWallets`, plus the keeper and treasury) are **excluded by default**, with a toggle to include them.
-- **Today:** **0 guardians from outside the team**. Both guardians, all four protections and the upcoming v2 test wallet are the team's own.
+- **Today:** **0 guardians from outside the team**. All 3 guardians, all 7 recorded protection attempts (4 v1, 3 v2) and the v2 test wallet belong to the team.
 - **For testers:**
   - the web app and demo mode remove the Telegram requirement;
   - **Set to test** on the Protection screen puts the trigger one point under the current ratio, so a real oracle dip triggers the keeper;

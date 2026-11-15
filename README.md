@@ -196,7 +196,7 @@ An honest view of what is done. Each testnet row has transaction hashes in [docs
 | x402 premium alerts paid in MUSD | ✅ Done, settlement proven on testnet |
 | Natural-language chat (rule-based) | ✅ Done, running in the live bot |
 | Web app without Telegram: landing page, wallet sign-in, every app screen, read-only demo mode | ✅ Done, live at keel-miniapp.vercel.app |
-| Guardian v2: partial rescue, `InsufficientReserve` with the BTC shortfall, capped protocol share | ✅ Deployed and verified on testnet; 17 contract tests (full, partial, impossible, Recovery Mode, dust, tips) |
+| Guardian v2: partial rescue, `InsufficientReserve` with the BTC shortfall, capped protocol share | ✅ Deployed and verified; 17 contract tests; **all three paths run on testnet** with a fresh wallet and the production keeper (insufficient, partial, full), transactions in [docs/WAVE2_CHECKLIST.md](docs/WAVE2_CHECKLIST.md) |
 | Public stats from on-chain data (/stats) | ✅ Done: 4 keeper protections so far, 2 triggered by real BTC price moves (all on the team's own guardians) |
 | KeelPro subscription contract | ✅ Deployed and verified; Pro features in the app are next |
 | Recovery Mode alert | 🧪 Built and tested locally (can't be forced on a shared testnet) |
