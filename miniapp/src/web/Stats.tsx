@@ -2,7 +2,7 @@ import { useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { api, type AppConfig, type ProtectionDto } from "../lib/api"
 import { LINKS } from "../lib/web"
-import { btcFmt, musdFmt, pctFmt, toNum, usdFmt } from "./format"
+import { btcFine, btcFmt, musdFmt, pctFmt, toNum, usdFmt } from "./format"
 import "./web.css"
 
 const KIND: Record<ProtectionDto["kind"], [string, string]> = {
@@ -100,9 +100,9 @@ export function Stats({ cfg }: { cfg: AppConfig }) {
                 {fees.feeBps !== null ? ` (currently ${(fees.feeBps / 100).toFixed(2)}% of the amount applied)` : ""}. These are the real totals so far, on testnet.
               </p>
               <div className="st-grid">
-                <Card dark label="Protocol fees, BTC" value={btcFmt(fees.protocolFeesBTC)} />
+                <Card dark label="Protocol fees, BTC" value={btcFine(fees.protocolFeesBTC)} />
                 <Card label="Protocol fees, MUSD" value={musdFmt(fees.protocolFeesMUSD)} />
-                <Card label="Keeper tips paid, BTC" value={btcFmt(fees.tipsBTC)} />
+                <Card label="Keeper tips paid, BTC" value={btcFine(fees.tipsBTC)} />
                 <Card label="Keeper tips paid, MUSD" value={musdFmt(fees.tipsMUSD)} />
               </div>
               {fees.treasury && <p className="lp-fine lp-muted">Treasury: <a href={`${explorer}/address/${fees.treasury}`} target="_blank" rel="noopener"><code>{fees.treasury}</code></a> · Business model: <a href={`${LINKS.github}/blob/main/docs/BUSINESS.md`} target="_blank" rel="noopener">docs/BUSINESS.md</a></p>}
