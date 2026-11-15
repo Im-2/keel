@@ -145,8 +145,12 @@ test("every visible link and button is clickable and lands where it says", async
       const want = new URL(it.href, baseURL)
       // "commit": the navigation happened; heavy destinations (the app in demo mode) can take longer to finish loading
       await Promise.all([page.waitForURL((u) => u.pathname === want.pathname && u.search === want.search, { timeout: 30_000, waitUntil: "commit" }), isMobile ? el.tap() : el.click()])
-      // the destination rendered something real (docs page, stats, sign-in or the demo)
+      // the destination rendered something real, and it is the RIGHT thing: not the landing page left on screen
+      // (a hash-only link like /#/app used to leave the landing bundle in place)
       await expect(page.locator("body")).not.toHaveText(/^\s*$/, { timeout: 20_000 })
+      const expectText: Record<string, RegExp> = { "/#/app": /Connect your wallet|Sign in/, "/?demo=1#/": /Demo mode/, "/docs": /Overview/, "/stats": /Live stats/ }
+      const key = it.href in expectText ? it.href : want.pathname.startsWith("/docs") ? "/docs" : ""
+      if (key) await expect(page.locator("body"), `${label} should show its own page`).toHaveText(expectText[key], { timeout: 60_000 })
     } catch (e) {
       problems.push(`${(e as Error).message.split("\n")[0]}: ${label}`)
     }
