@@ -44,6 +44,9 @@ ui/keel-logos-red-black-white.zip
 # demo video production: keep only the script in git (videos, audio, frames and ElevenLabs output stay local)
 demvid/*
 !demvid/script.md
+!demvid/script-wave2.md
+!demvid/timeline-wave2.md
+!demvid/footage-log-wave2.md
 
 # internal working files (agent config, build prompt, local notes)
 .claude/

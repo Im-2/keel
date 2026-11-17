@@ -56,6 +56,9 @@ export function createApi(d: ApiDeps) {
       return "*"
     }
   })()
+  // public health endpoints, readable from the static /status page on any origin
+  app.use("/status.json", cors({ origin: "*" }))
+  app.use("/healthz", cors({ origin: "*" }))
   app.use("/api/*", cors({ origin: [miniappOrigin, "http://localhost:5173", "https://localhost:5173", "http://localhost:5174"], exposeHeaders: ["*"] }))
   // Per-user data: never stored by a browser, proxy or CDN, and never served to anyone else from a cache.
   app.use("/api/*", async (c, next) => {

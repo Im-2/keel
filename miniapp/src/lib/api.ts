@@ -80,13 +80,13 @@ export class ApiError extends Error {
   }
 }
 
-async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
+async function call<T>(method: string, path: string, body?: unknown, timeoutMs?: number): Promise<T> {
   const res = await fetch(apiUrl(path), {
     method,
     headers: authHeaders(),
     body: body === undefined ? undefined : JSON.stringify(body),
     // never leave a screen on a spinner forever if the backend is unreachable
-    signal: AbortSignal.timeout(method === "GET" ? 20_000 : 60_000),
+    signal: AbortSignal.timeout(timeoutMs ?? (method === "GET" ? 20_000 : 60_000)),
   }).catch((e: Error) => {
     throw new ApiError(e.name === "TimeoutError" ? "Keel's server is not responding" : "Can't reach Keel's server", 0)
   })
@@ -98,13 +98,13 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
 }
 
 export const api = {
-  config: () => call<AppConfig>("GET", "/api/config"),
+  config: (timeoutMs?: number) => call<AppConfig>("GET", "/api/config", undefined, timeoutMs),
   me: () => call<{ tgId: number | null; username?: string; address: Address | null; web?: boolean; telegram?: boolean }>("GET", "/api/me"),
   webNonce: (address: Address) => call<{ nonce: string; message: string }>("POST", "/api/web/nonce", { address }),
   webSession: (b: { address: Address; nonce: string; signature: string }) => call<{ token: string; expires: number; address: Address; telegram: boolean }>("POST", "/api/web/session", b),
   webLogout: () => call<{ ok: boolean }>("POST", "/api/web/logout", {}),
   webTelegram: () => call<{ linked: boolean; url?: string }>("POST", "/api/web/telegram", {}),
-  stats: (all = false) => call<StatsDto>("GET", `/api/stats${all ? "?all=1" : ""}`),
+  stats: (all = false, timeoutMs?: number) => call<StatsDto>("GET", `/api/stats${all ? "?all=1" : ""}`, undefined, timeoutMs),
   nonce: () => call<{ nonce: string; message: string }>("POST", "/api/nonce", {}),
   bind: (b: { nonce: string; address: Address; signature: string; takeover?: boolean }) => call<{ address: Address }>("POST", "/api/bind", b),
   intent: (id: string) => call<IntentDto>("GET", `/api/intent/${id}`),

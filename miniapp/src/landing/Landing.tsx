@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react"
 import { CONTRACTS, LINKS, fetchStats, num, type Stats } from "./data"
+import { loadSnapshot } from "../lib/snapshot"
 
 // ------------------------------------------------------------------ building blocks
 
@@ -321,7 +322,15 @@ function StatsBand() {
   useEffect(() => {
     const ctl = new AbortController()
     let tries = 0
-    const sig = () => (AbortSignal.any ? AbortSignal.any([ctl.signal, AbortSignal.timeout(12_000)]) : ctl.signal)
+    const sig = () => (AbortSignal.any ? AbortSignal.any([ctl.signal, AbortSignal.timeout(8_000)]) : ctl.signal)
+    // static snapshot first (instant, works with the backend asleep), live numbers replace it
+    void loadSnapshot().then((snap) => {
+      if (snap && !ctl.signal.aborted) {
+        setS((cur) => cur ?? (snap.all as unknown as Stats))
+        setOutside((cur) => cur ?? (snap.outside as unknown as Stats))
+        setState((st) => (st === "ok" ? st : "waking"))
+      }
+    })
     const load = () =>
       Promise.all([fetchStats(sig(), true), fetchStats(sig(), false)])
         .then(([all, ext]) => {
@@ -365,8 +374,9 @@ function StatsBand() {
             ))}
           </div>
         ) : (
-          <p className="stats-wait">{state === "down" ? <>Keel's free server is asleep right now. <a href={LINKS.stats}>Open the stats page</a> to wake it.</> : state === "waking" ? "Waking Keel's server (the free host sleeps when idle)…" : "Reading the chain…"}</p>
+          <p className="stats-wait">{state === "down" ? <>Live data is waking up, showing the latest snapshot. <a href={LINKS.stats}>Open the stats page</a> for details.</> : state === "waking" ? "Live data is waking up, showing the latest snapshot…" : "Reading the chain…"}</p>
         )}
+        {s && state !== "ok" && <p className="stats-wait" role="status">Live data is waking up, showing the latest snapshot.</p>}
         {s && s.protections.length > 0 && (
           <ul className="prot-list">
             {s.protections.slice(0, 3).map((p) => (

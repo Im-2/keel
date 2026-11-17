@@ -1,0 +1,11 @@
+# Optional mirror: connect this repo to Netlify (free) and it serves the same site from a second host.
+[build]
+  command = "pnpm install --frozen-lockfile --filter @keel/miniapp... && pnpm --filter @keel/miniapp build"
+  publish = "miniapp/dist"
+[build.environment]
+  NODE_VERSION = "24"
+  VITE_API_BASE = "https://keel-bot.onrender.com"
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

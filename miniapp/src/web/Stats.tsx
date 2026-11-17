@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { api, type AppConfig, type ProtectionDto } from "../lib/api"
+import { loadSnapshot, snapshotAge } from "../lib/snapshot"
 import { LINKS } from "../lib/web"
 import { btcFine, btcFmt, musdFmt, pctFmt, toNum, usdFmt } from "./format"
 import "./web.css"
@@ -17,10 +18,14 @@ const TRIGGER: Record<ProtectionDto["trigger"], string> = {
 }
 
 /** Public, read-only numbers straight from Mezo: no account needed. */
-export function Stats({ cfg }: { cfg: AppConfig }) {
+export function Stats({ cfg }: { cfg: Pick<AppConfig, "network" | "chainId"> }) {
   const [all, setAll] = useState(false)
-  const q = useQuery({ queryKey: ["stats", all], queryFn: () => api.stats(all), refetchInterval: 60_000, retry: 1 })
-  const s = q.data
+  // the baked snapshot (a static file) paints at once; live numbers replace it when the backend answers (3-8 s, or after it wakes)
+  const snap = useQuery({ queryKey: ["stats-snapshot"], queryFn: loadSnapshot, staleTime: Infinity })
+  const q = useQuery({ queryKey: ["stats", all], queryFn: () => api.stats(all, 8000), refetchInterval: (query) => (query.state.error ? 10_000 : 60_000), retry: false })
+  const fromSnap = snap.data ? (all ? snap.data.all : snap.data.outside) : undefined
+  const s = q.data ?? fromSnap
+  const stale = !q.data && !!s
   const explorer = cfg.network === "mainnet" ? "https://explorer.mezo.org" : "https://explorer.test.mezo.org"
   const done = s?.protections.filter((p) => p.kind !== "insufficient") ?? []
   const fees = s?.revenue
@@ -48,8 +53,9 @@ export function Stats({ cfg }: { cfg: AppConfig }) {
         </label>
       </section>
 
-      {q.isLoading && <p className="lp-muted">Reading the chain… (the first load scans every guardian, so it can take a few seconds)</p>}
-      {q.error && <p className="lp-muted">Couldn't load stats right now: {(q.error as Error).message}</p>}
+      {stale && snap.data && <p className="st-note" role="status">Live data is waking up, showing the latest snapshot from {snapshotAge(snap.data.at)}. It updates by itself.</p>}
+      {!s && !q.error && <p className="lp-muted" role="status">Reading the chain…</p>}
+      {!s && q.error && <p className="lp-muted" role="status">Live data is waking up (Keel's free server sleeps when idle). Trying again in a few seconds…</p>}
 
       {s && (
         <>

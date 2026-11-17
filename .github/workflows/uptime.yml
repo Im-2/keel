@@ -1,0 +1,44 @@
+# Independent uptime monitor (runs on GitHub's servers, not on anyone's PC). Every 5 minutes it checks the website,
+# the backend health endpoint and the stats API; each also keeps the free backend awake. If something is still failing
+# after retries it messages the admins on Telegram (at most about once every 30 minutes).
+name: uptime
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+permissions: {}
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Check site, health and stats
+        env:
+          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          ADMIN_IDS: ${{ secrets.ADMIN_CHAT_IDS }}
+        run: |
+          set -u
+          fails=""
+          probe() { # name url must-contain
+            for i in 1 2 3 4; do
+              out=$(curl -s -m 70 -w '\n%{http_code} %{time_total}' "$2" || true)
+              code=$(echo "$out" | tail -1 | cut -d' ' -f1)
+              if [ "$code" = "200" ] && echo "$out" | grep -q "$3"; then echo "ok   $1 $(echo "$out" | tail -1)"; return 0; fi
+              sleep 15
+            done
+            echo "FAIL $1 (last status: $code)"; fails="$fails\n- $1 ($code)"; return 1
+          }
+          probe "website https://keel-miniapp.vercel.app" "https://keel-miniapp.vercel.app/" "Keel" || true
+          probe "docs" "https://keel-miniapp.vercel.app/docs" "Keel" || true
+          probe "backend /healthz" "https://keel-bot.onrender.com/healthz" '"ok":true' || true
+          probe "stats API" "https://keel-bot.onrender.com/api/stats" "guardians" || true
+          if [ -n "$fails" ]; then
+            m=$(date +%M)
+            if [ -n "${BOT_TOKEN:-}" ] && [ "$m" -lt 5 -o "$m" -ge 30 -a "$m" -lt 35 ]; then
+              for id in $(echo "${ADMIN_IDS:-}" | tr ',' ' '); do
+                curl -s -m 20 "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" --data-urlencode "chat_id=$id" \
+                  --data-urlencode "text=$(printf 'Keel is DOWN or degraded:%b\n\nStatus: https://keel-miniapp.vercel.app/status' "$fails")" > /dev/null || true
+              done
+            fi
+            exit 1
+          fi
