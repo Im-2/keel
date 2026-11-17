@@ -24,6 +24,8 @@ jobs:
               out=$(curl -s -m 70 -w '\n%{http_code} %{time_total}' "$2" || true)
               code=$(echo "$out" | tail -1 | cut -d' ' -f1)
               if [ "$code" = "200" ] && echo "$out" | grep -q "$3"; then echo "ok   $1 $(echo "$out" | tail -1)"; return 0; fi
+              # Vercel's automatic bot check answers scripts with 403 "Security Checkpoint": the site is up, just not for curl
+              if [ "$code" = "403" ] && echo "$out" | grep -q "Vercel Security Checkpoint"; then echo "ok   $1 (CDN up, bot checkpoint)"; return 0; fi
               sleep 15
             done
             echo "FAIL $1 (last status: $code)"; fails="$fails\n- $1 ($code)"; return 1
