@@ -55,6 +55,7 @@ export function Status() {
   const k = s?.keeper
   const pending = state === "loading"
   return (
+    <div>
     <div className="lp">
       <nav className="lp-nav"><a className="lp-brand" href="/"><img src="/keel-mark-red.svg" width={30} height={30} alt="" /> Keel</a></nav>
       <section className="lp-section" style={{ paddingTop: 12 }}>
@@ -75,6 +76,7 @@ export function Status() {
         </table>
         <p className="lp-fine lp-muted">Network: {s?.network ?? "testnet"}. Source: <a href="https://github.com/Im-2/keel/blob/main/docs/RELIABILITY.md" target="_blank" rel="noopener">docs/RELIABILITY.md</a></p>
       </section>
+    </div>
     </div>
   )
 }
