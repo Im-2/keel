@@ -77,3 +77,6 @@ The status page shows the keeper wallet's BTC balance. Below `KEEPER_MIN_BTC` it
 - **Instance size:** Render's free instance is small (about 512 MB, a fraction of a CPU). The bot uses well under that.
 - **Free hours:** 750 instance hours a month, enough for exactly one always-on service.
 - **Turso's free plan:** an archived database needs a manual "unarchive" after about 10 days of no activity. The every-minute schedule keeps it active.
+
+## Reliability
+See [RELIABILITY.md](RELIABILITY.md): static-first pages, baked stats snapshot, `/status` page, second uptime monitor. If the web app ever shows "Waking up the server" for more than a couple of minutes, check that the cron-job.org job is **enabled** (it was found disabled on 2026-11-17).
