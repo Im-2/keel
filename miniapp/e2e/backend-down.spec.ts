@@ -4,7 +4,7 @@ import { test, expect } from "@playwright/test"
 const BASE = process.env.E2E_URL ?? "https://keel-miniapp.vercel.app"
 
 test.beforeEach(async ({ page }) => {
-  await page.route(/keel-bot\.onrender\.com/, (r) => r.abort("connectionfailed"))
+  await page.route((u) => /keel-bot\.onrender\.com/.test(u.href) || u.pathname.startsWith("/api/"), (r) => r.abort("connectionfailed"))
 })
 
 test("landing renders with the baked snapshot when the API is down", async ({ page }) => {
