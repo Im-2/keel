@@ -13,7 +13,6 @@ import { inTelegram, readHandoffFromUrl } from "./lib/telegram"
 import { scopeStorageToUser } from "./lib/session"
 import { isDemo, isWeb } from "./lib/web"
 import { WebRoot } from "./web/WebRoot"
-import { Status } from "./web/Status"
 import "./styles.css"
 
 tg?.ready()
@@ -80,11 +79,6 @@ async function loadConfig(): Promise<AppConfig> {
 }
 
 async function boot() {
-  // the status page never waits for the backend: it paints at once and fills in the live checks afterwards
-  if (location.pathname.replace(/\/$/, "") === "/status") {
-    root.render(<Status />)
-    return
-  }
   // read-only demo with sample data (web), or the dev preview (`?mock`)
   if (isDemo() || (import.meta.env.DEV && new URLSearchParams(location.search).has("mock"))) (await import("./lib/demo")).installMock()
   root.render(<div className="app"><div className="splash"><div className="splash-mark"><span className="splash-glow" /><img src="/keel-mark-red.svg" width={72} height={72} alt="Keel" /></div></div></div>)
