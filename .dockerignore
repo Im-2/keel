@@ -1,0 +1,16 @@
+node_modules
+**/node_modules
+.env
+.env.*
+!.env.example
+*.pem
+.keel-local-keys.json
+demvid
+ui
+submission
+keel-repo.tar.gz
+miniapp/dist
+miniapp/e2e-results
+contracts/artifacts
+contracts/cache
+.git

@@ -90,6 +90,8 @@ setInterval(() => void ops.runAlerts(), config.pollMs)
 if (keeper) setInterval(() => void ops.runKeeper(), config.pollMs)
 void ops.runKeeper()
 void ops.runAlerts()
+// self-watchdog: keeper / watcher staleness and the process's own /healthz, with Telegram alerts to ADMIN_IDS
+setInterval(() => void ops.watchdog(() => fetch(`http://127.0.0.1:${config.apiPort}/healthz`, { signal: AbortSignal.timeout(3000) }).then((r) => r.ok)), 60_000)
 // The block watcher paces itself: every ~4s (about one Mezo block) while someone has Keel open, else every 15s.
 const watchLoop = async () => {
   await ops.runWatcher()

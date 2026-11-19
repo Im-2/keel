@@ -47,9 +47,16 @@ function WakeScreen({ since, onRetry }: { since: number; onRetry: () => void }) 
     <div className="app">
       <div className="state">
         <img src="/keel-mark-red.svg" width={56} height={56} alt="Keel" />
-        <h2>Waking up the server</h2>
-        <p className="muted">Keel's free server sleeps when nobody is using it. This takes about 30 seconds. We keep trying, no need to reload.</p>
-        <p className="muted" style={{ fontVariantNumeric: "tabular-nums" }}>{sec}s{sec > 75 ? " · still trying, the server may be restarting" : ""}</p>
+        <h2>{sec > 90 ? "The server is offline for now" : "Waking up the server"}</h2>
+        <p className="muted">
+          {sec > 90
+            ? "Keel's backend is not answering. It is a testnet demo on a free host, so it can be down for a while. Everything that doesn't need the server still works:"
+            : "Keel's free server sleeps when nobody is using it. This takes about 30 seconds. We keep trying, no need to reload."}
+        </p>
+        {sec > 90 && (
+          <p className="muted"><a href="/?demo=1">Try the read-only demo</a> · <a href="/stats">Stats snapshot</a> · <a href="/docs">Docs</a> · <a href="/status">Status</a></p>
+        )}
+        <p className="muted" style={{ fontVariantNumeric: "tabular-nums" }}>{sec}s · still trying in the background</p>
         <button className="btn" onClick={onRetry}>Try again now</button>
       </div>
     </div>

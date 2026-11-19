@@ -123,6 +123,39 @@ export class Ops {
     return { balance: bal, low }
   }
 
+  /**
+   * In-process watchdog (runs every minute): messages the admins when the keeper has not completed a run for
+   * 10 minutes or keeps failing, when the block watcher is stuck, or when this process cannot answer its own
+   * health check. Each kind of alert is sent at most once per hour. (A dead process cannot alert about itself:
+   * the external monitors in docs/RELIABILITY.md cover that.)
+   */
+  async watchdog(selfHealthy: () => Promise<boolean> = async () => true): Promise<string[]> {
+    const problems: string[] = []
+    const stale = (name: string, maxAge: number) => {
+      const r = this.lastRun(name)
+      if (!r) return (Date.now() - this.startedAt) / 1000 > maxAge ? `${name} has not run since start` : null
+      if (this.now() - r.at > maxAge) return `${name} last ran ${Math.round((this.now() - r.at) / 60)} min ago`
+      return null
+    }
+    if (this.d.keeper) {
+      const k = stale("keeper", 600)
+      if (k) problems.push("keeper: " + k)
+      const r = this.lastRun("keeper")
+      if (r && !r.ok) problems.push(`keeper: last run failed (${r.detail ?? "error"})`)
+    }
+    const w = this.d.watcher ? stale("watcher", 600) : null
+    if (w) problems.push("block watcher: " + w)
+    if (!(await selfHealthy().catch(() => false))) problems.push("/healthz is not answering from inside the process")
+    for (const p of problems) {
+      const key = "ops:wd:" + p.split(":")[0].split(" ").slice(0, 2).join("_")
+      const last = Number(this.d.store.getKv(key) ?? 0)
+      if (this.now() - last < 3600) continue
+      this.d.store.setKv(key, String(this.now()))
+      for (const id of this.d.config.adminIds) await this.d.notifier.send(id, `🚨 <b>Keel watchdog</b>: ${p.replace(/[<>&]/g, "")}`).catch(() => undefined)
+    }
+    return problems
+  }
+
   async status() {
     const t0 = Date.now()
     const [rpc, bot, keeper] = await Promise.all([
@@ -184,13 +217,20 @@ ${row("Database", !s.database.mirrorError, `${esc(Object.entries(s.database.rows
 
   // External schedule (cron-job.org every minute): runs keeper + alerts and keeps a sleeping host awake.
   const tick = async (c: { req: { query(k: string): string | undefined; header(k: string): string | undefined }; json: (v: unknown, s?: number) => Response }) => {
-    const key = c.req.query("key") ?? c.req.header("x-cron-key")
-    if (!cronSecret || key !== cronSecret) return c.json({ error: "forbidden" }, 403)
-    // answer at once; the jobs run in the background (cron services time out after ~30s)
-    void ops.runKeeper()
-    void ops.runAlerts()
-    void ops.runWatcher()
-    return c.json({ ok: true, keeper: ops.lastRun("keeper"), alerts: ops.lastRun("alerts") })
+    try {
+      const key = c.req.query("key") ?? c.req.header("x-cron-key")
+      if (!cronSecret || key !== cronSecret) return c.json({ error: "forbidden" }, 403)
+      // Answer at once: the jobs run in the background with their own error handling (cron services time out
+      // after ~30s). A job that is already running is skipped, so overlapping ticks are safe; the keeper and the
+      // block watcher read their state from the chain and the stored cursor, so a missed tick is caught up by the next.
+      void ops.runKeeper().catch((e) => console.error("keeper tick:", e))
+      void ops.runAlerts().catch((e) => console.error("alerts tick:", e))
+      void ops.runWatcher().catch((e) => console.error("watcher tick:", e))
+      return c.json({ ok: true, keeper: ops.lastRun("keeper"), alerts: ops.lastRun("alerts") })
+    } catch (e) {
+      console.error("tick handler:", e) // never answer a pinger with a 5xx
+      return c.json({ ok: false, error: "internal, logged" })
+    }
   }
   app.get("/cron/tick", tick as never)
   app.post("/cron/tick", tick as never)

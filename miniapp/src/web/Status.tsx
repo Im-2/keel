@@ -24,6 +24,7 @@ const ago = (at?: number) => {
 export function Status() {
   const [s, setS] = useState<StatusJson | null>(null)
   const [state, setState] = useState<"loading" | "down" | "ok">("loading")
+  const [code, setCode] = useState<number | null>(null)
   const [ms, setMs] = useState<number | null>(null)
   useEffect(() => {
     let stop = false
@@ -32,12 +33,16 @@ export function Status() {
       const t0 = performance.now()
       try {
         const r = await fetch(apiUrl("/status.json"), { signal: AbortSignal.timeout(10_000), cache: "no-store" })
-        if (!r.ok) throw new Error(String(r.status))
+        if (!r.ok) {
+          if (!stop) setCode(r.status)
+          throw new Error(String(r.status))
+        }
         const j = (await r.json()) as StatusJson
         if (stop) return
         setS(j)
         setMs(Math.round(performance.now() - t0))
         setState("ok")
+        setCode(null)
       } catch {
         if (!stop) setState("down")
       }
@@ -61,11 +66,17 @@ export function Status() {
       <section className="lp-section" style={{ paddingTop: 12 }}>
         <h2>Keel status</h2>
         <p className="lp-muted">Checks the website, the server, Mezo, the keeper and the database. Refreshes by itself.</p>
-        {state === "down" && <p className="st-note" role="status">The server is waking up (it sleeps when idle and takes about 30 seconds). The website itself is up. Checking again…</p>}
+        {state === "down" && (
+          <p className="st-note" role="status">
+            {code === 503
+              ? "The backend is offline right now (its free host answered 503, which usually means the monthly free-hours quota ran out or a restart is in progress). The website, docs, stats snapshot and demo mode still work. Checking again…"
+              : "The server is waking up (it sleeps when idle and takes about 30 seconds). The website itself is up. Checking again…"}
+          </p>
+        )}
         <table className="stt">
           <tbody>
             {row("Website (static, CDN)", true, "up")}
-            {row("Server and API", pending ? null : state === "ok", state === "ok" ? `up · ${ms} ms${s?.commit ? ` · build ${s.commit}` : ""}` : pending ? "checking…" : "waking up")}
+            {row("Server and API", pending ? null : state === "ok", state === "ok" ? `up · ${ms} ms${s?.commit ? ` · build ${s.commit}` : ""}` : pending ? "checking…" : code === 503 ? "offline (503)" : "waking up")}
             {row("Telegram bot", s ? s.bot.ok : null, s ? (s.bot.ok ? `@${s.bot.username} (${s.bot.mode})` : s.bot.error ?? "down") : "—")}
             {row("Mezo RPC", s ? s.rpc.ok : null, s ? (s.rpc.ok ? `block ${s.rpc.block} · ${s.rpc.ms} ms` : s.rpc.error ?? "down") : "—")}
             {row("Keeper wallet", k ? k.configured && !k.low : null, k ? `${k.balanceBtc ? Number(k.balanceBtc).toFixed(4) : "?"} BTC${k.low ? " (LOW)" : ""}` : "—")}

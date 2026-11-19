@@ -85,4 +85,23 @@ describe("ops: schedule, status and keeper funding", () => {
     expect(slow.lastRun("alerts")).toMatchObject({ ok: false, detail: "rpc down" })
     void ops
   })
+
+  it("the watchdog alerts the admins once when the keeper has not run for 10 minutes, and when /healthz fails", async () => {
+    const { ops, notifier, advance } = setup(E18)
+    await ops.runKeeper()
+    expect(await ops.watchdog()).toEqual([])
+    advance(11 * 60)
+    const problems = await ops.watchdog(async () => false)
+    expect(problems.some((p) => p.startsWith("keeper"))).toBe(true)
+    expect(problems.some((p) => p.includes("/healthz"))).toBe(true)
+    const sent = (notifier as unknown as { sent: unknown[] }).sent?.length
+    await ops.watchdog(async () => false) // same problems inside the hour: no second message
+    expect((notifier as unknown as { sent: unknown[] }).sent?.length).toBe(sent)
+  })
+
+  it("/cron/tick answers 200 even when a job throws, and 403 without the key", async () => {
+    const { app } = setup(E18)
+    expect((await app.request("/cron/tick?key=wrong")).status).toBe(403)
+    expect((await app.request("/cron/tick?key=s3cret")).status).toBe(200)
+  })
 })
